@@ -1,6 +1,8 @@
 import SwiftUI
 import Cocoa
 import CoreMotion
+import ApplicationServices
+import AppKit
 
 @main
 struct HeadFlowApp: App {
@@ -47,6 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Make sure defaults exist even if user never opened Preferences.
         HeadFlowSettings.registerDefaults()
+        HeadFlowStatus.shared.refreshAll()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 

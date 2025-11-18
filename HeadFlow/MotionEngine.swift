@@ -26,6 +26,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
     func start() {
         let auth = CMHeadphoneMotionManager.authorizationStatus()
         print("MotionEngine: authorization status = \(auth.rawValue)")
+        HeadFlowStatus.shared.updateMotionAuthorization(auth)
 
         switch auth {
         case .denied, .restricted:
@@ -37,8 +38,12 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
         guard manager.isDeviceMotionAvailable else {
             print("MotionEngine: device motion not available (no supported headphones?)")
+            HeadFlowStatus.shared.setHeadphonesStatus(.notSupported)
             return
         }
+
+        // At this point, motion is available but may not be connected yet.
+        HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
 
         guard !manager.isDeviceMotionActive else {
             print("MotionEngine: device motion already active")
@@ -61,6 +66,9 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         guard manager.isDeviceMotionActive else { return }
         manager.stopDeviceMotionUpdates()
         print("MotionEngine: stopped device motion updates")
+
+        // When stopping, we can treat as "not connected" for now.
+        HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
     }
 
     /// Called whenever new motion data arrives (on our background queue).
@@ -216,11 +224,13 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
     func headphoneMotionManagerDidConnect(_ manager: CMHeadphoneMotionManager) {
         print("MotionEngine: headphones connected")
+        HeadFlowStatus.shared.setHeadphonesStatus(.connected)
         neutralPitchDeg = nil
     }
 
     func headphoneMotionManagerDidDisconnect(_ manager: CMHeadphoneMotionManager) {
         print("MotionEngine: headphones disconnected")
+        HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
         neutralPitchDeg = nil
     }
 }
