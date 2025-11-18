@@ -61,7 +61,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         ))
 
-        // NEW: head scrolling toggle item
+        // Head scrolling toggle item
         let toggleItem = NSMenuItem(
             title: headScrollingMenuTitle(),
             action: #selector(toggleHeadScrolling),
@@ -72,7 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(toggleItem)
         self.headScrollingMenuItem = toggleItem
 
-        // Existing calibrate item
+        // Calibrate item
         let calibrateItem = NSMenuItem(
             title: "Calibrate head position",
             action: #selector(calibrateHeadPosition),

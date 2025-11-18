@@ -20,6 +20,15 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyMaxTiltDegrees)
     private var maxTiltDegrees: Double = HeadFlowSettings.defaultMaxTiltDegrees
 
+    // Scroll mode (stored as raw Int)
+    @AppStorage(HeadFlowSettings.keyScrollMode)
+    private var scrollModeRaw: Int = HeadFlowSettings.defaultScrollModeRaw
+
+    private var scrollMode: ScrollMode {
+        get { ScrollMode(rawValue: scrollModeRaw) ?? .continuous }
+        set { scrollModeRaw = newValue.rawValue }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("HeadFlow Preferences")
@@ -56,6 +65,23 @@ struct PreferencesView: View {
 
                         Slider(value: $baseLines, in: 1...20, step: 1)
                     }
+                }
+            }
+
+            // MARK: - Scroll behavior
+            GroupBox("Scroll behavior") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Scroll mode", selection: $scrollModeRaw) {
+                        ForEach(ScrollMode.allCases) { mode in
+                            Text(mode.displayName)
+                                .tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(scrollMode.shortDescription)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -114,7 +140,7 @@ struct PreferencesView: View {
             idealWidth: 440,
             maxWidth: .infinity,
             minHeight: 260,
-            idealHeight: 320,
+            idealHeight: 340,
             maxHeight: .infinity,
             alignment: .topLeading
         )

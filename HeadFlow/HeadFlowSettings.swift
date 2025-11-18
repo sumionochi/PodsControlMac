@@ -8,6 +8,7 @@ enum HeadFlowSettings {
     static let keyDeadZoneDegrees        = "deadZoneDegrees"
     static let keyMaxTiltDegrees         = "maxTiltDegrees"
     static let keyBaseLines              = "baseLines"
+    static let keyScrollMode             = "scrollMode"
 
     // Defaults
     static let defaultIsHeadScrollingEnabled: Bool   = true
@@ -15,6 +16,7 @@ enum HeadFlowSettings {
     static let defaultDeadZoneDegrees: Double        = 3.0    // degrees
     static let defaultMaxTiltDegrees: Double         = 25.0   // degrees
     static let defaultBaseLines: Double              = 5.0    // 1–20 recommended
+    static let defaultScrollModeRaw: Int             = ScrollMode.continuous.rawValue
 
     /// Ensure reasonable defaults exist even if user never opened Preferences.
     static func registerDefaults() {
@@ -23,7 +25,8 @@ enum HeadFlowSettings {
             keyScrollSensitivity:      defaultScrollSensitivity,
             keyDeadZoneDegrees:        defaultDeadZoneDegrees,
             keyMaxTiltDegrees:         defaultMaxTiltDegrees,
-            keyBaseLines:              defaultBaseLines
+            keyBaseLines:              defaultBaseLines,
+            keyScrollMode:             defaultScrollModeRaw
         ])
     }
 
@@ -88,5 +91,16 @@ enum HeadFlowSettings {
     static func baseLines() -> Int32 {
         let clamped = max(1.0, min(20.0, baseLinesRaw))
         return Int32(clamped.rounded())
+    }
+
+    static var scrollMode: ScrollMode {
+        get {
+            let raw = UserDefaults.standard.object(forKey: keyScrollMode) as? Int
+                ?? defaultScrollModeRaw
+            return ScrollMode(rawValue: raw) ?? .continuous
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: keyScrollMode)
+        }
     }
 }
