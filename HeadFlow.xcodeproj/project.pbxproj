@@ -10,9 +10,22 @@
 		CB7ECCD72ECB66F00058A029 /* HeadFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HeadFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CB7ECCFA2ECCDD2E0058A029 /* Exceptions for "HeadFlow" folder in "HeadFlow" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CB7ECCD62ECB66F00058A029 /* HeadFlow */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		CB7ECCD92ECB66F00058A029 /* HeadFlow */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CB7ECCFA2ECCDD2E0058A029 /* Exceptions for "HeadFlow" folder in "HeadFlow" target */,
+			);
 			path = HeadFlow;
 			sourceTree = "<group>";
 		};

@@ -2,7 +2,7 @@ import Foundation
 import CoreMotion
 
 /// Handles motion updates from compatible headphones (AirPods, Beats)
-/// and converts head tilt into scroll events.
+/// and converts head tilt into scroll events using configurable settings.
 @available(macOS 14.0, *)
 final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
@@ -12,10 +12,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
     // Last measured pitch (degrees) and neutral baseline.
     private var lastPitchDeg: Double?
     private var neutralPitchDeg: Double?
-
-    // Tuning constants.
-    private let deadZoneDeg: Double = 3.0    // no scroll if tilt is within ±3°
-    private let maxTiltDeg: Double = 25.0    // clamp tilt to ±25° before mapping to speed
 
     override init() {
         super.init()
@@ -77,10 +73,14 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             return
         }
 
-        // Respect user setting.
+        // Respect user setting (global ON/OFF).
         guard HeadFlowSettings.isHeadScrollingEnabled else { return }
 
-        let baselineLines = HeadFlowSettings.baseLines()
+        // Read current tuning settings.
+        let deadZoneDeg = max(0.0, HeadFlowSettings.deadZoneDegrees)
+        let maxTiltDeg  = max(1.0, HeadFlowSettings.maxTiltDegrees) // avoid division by zero
+        let baseLines   = HeadFlowSettings.baseLines()
+        let sensitivity = HeadFlowSettings.scrollSensitivity // 0–100
 
         // How far from neutral are we?
         guard let neutral = neutralPitchDeg else { return }
@@ -93,11 +93,15 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
         // Clamp tilt to max range and map to [-1, 1].
         let clamped = max(-maxTiltDeg, min(maxTiltDeg, delta))
-        let factor = clamped / maxTiltDeg                     // -1 ... 1
-        let magnitude = abs(factor)
+        let factor = clamped / maxTiltDeg              // -1 ... 1
+        let magnitude = abs(factor)                    // 0 ... 1
 
-        // Scale sensitivity by tilt magnitude.
-        let lines = Int32(round(Double(baselineLines) * magnitude))
+        // Sensitivity factor: 0.5x (0) … 1.5x (100)
+        let sensitivityFactor = 0.5 + (sensitivity / 100.0)
+
+        // Compute scroll lines: baseLines * |tilt| * sensitivityFactor
+        let linesDouble = Double(baseLines) * magnitude * sensitivityFactor
+        let lines = Int32(linesDouble.rounded())
         guard lines > 0 else { return }
 
         // Decide direction:
@@ -116,8 +120,9 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             neutralPitchDeg = last
             print("MotionEngine: manually calibrated neutral pitch = \(last)")
         } else {
+            // If we haven't received data yet, let auto-calibration handle it.
             neutralPitchDeg = nil
-            print("MotionEngine: no motion samples yet – connect AirPods with head tracking and move your head a bit, then try calibrate again.")
+            print("MotionEngine: no motion samples yet – will auto-calibrate on next sample")
         }
     }
 

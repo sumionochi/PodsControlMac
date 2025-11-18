@@ -34,7 +34,6 @@ class PreferencesWindowController: NSWindowController {
     }
 }
 
-
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var preferencesWindowController: PreferencesWindowController?
@@ -43,7 +42,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var motionEngine = MotionEngine()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Make sure defaults exist even if user never opened Preferences.
+        // Register default settings so everything has sane values
+        // even before the user opens Preferences.
         HeadFlowSettings.registerDefaults()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -59,7 +59,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         ))
 
-        // NEW: calibrate item
         let calibrateItem = NSMenuItem(
             title: "Calibrate head position",
             action: #selector(calibrateHeadPosition),
@@ -93,7 +92,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-
     func applicationWillTerminate(_ notification: Notification) {
         if #available(macOS 14.0, *) {
             motionEngine.stop()
@@ -112,17 +110,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
     }
-    
+
     @objc func calibrateHeadPosition() {
         if #available(macOS 14.0, *) {
             motionEngine.calibrateNeutral()
         }
     }
 
-
     @objc func quit() {
         NSApp.terminate(nil)
     }
-    
-    
 }

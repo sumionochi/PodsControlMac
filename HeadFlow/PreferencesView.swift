@@ -3,35 +3,89 @@ import AppKit
 
 /// Main preferences UI for HeadFlow.
 struct PreferencesView: View {
+    // Normal settings
     @AppStorage(HeadFlowSettings.keyIsHeadScrollingEnabled)
-    private var isHeadScrollingEnabled: Bool = true
+    private var isHeadScrollingEnabled: Bool = HeadFlowSettings.defaultIsHeadScrollingEnabled
 
     @AppStorage(HeadFlowSettings.keyScrollSensitivity)
-    private var scrollSensitivity: Double = 50.0
+    private var scrollSensitivity: Double = HeadFlowSettings.defaultScrollSensitivity
+
+    @AppStorage(HeadFlowSettings.keyBaseLines)
+    private var baseLines: Double = HeadFlowSettings.defaultBaseLines
+
+    // Advanced tuning
+    @AppStorage(HeadFlowSettings.keyDeadZoneDegrees)
+    private var deadZoneDegrees: Double = HeadFlowSettings.defaultDeadZoneDegrees
+
+    @AppStorage(HeadFlowSettings.keyMaxTiltDegrees)
+    private var maxTiltDegrees: Double = HeadFlowSettings.defaultMaxTiltDegrees
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Title
             Text("HeadFlow Preferences")
                 .font(.title2)
                 .bold()
 
-            // Enable toggle
-            Toggle(isOn: $isHeadScrollingEnabled) {
-                Text("Enable head scrolling")
+            // MARK: - Normal settings
+            GroupBox("Normal settings") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle(isOn: $isHeadScrollingEnabled) {
+                        Text("Enable head scrolling")
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Scroll sensitivity")
+                            Spacer()
+                            Text("\(Int(scrollSensitivity))")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Slider(value: $scrollSensitivity, in: 0...100)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Max scroll lines per update")
+                            Spacer()
+                            Text("\(Int(baseLines.rounded()))")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Slider(value: $baseLines, in: 1...20, step: 1)
+                    }
+                }
             }
 
-            // Sensitivity slider
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Scroll sensitivity")
-                    Spacer()
-                    Text("\(Int(scrollSensitivity))")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
+            // MARK: - Focused / advanced tuning
+            GroupBox("Focused tuning") {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Dead zone (° around neutral)")
+                            Spacer()
+                            Text(String(format: "%.1f°", deadZoneDegrees))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
 
-                Slider(value: $scrollSensitivity, in: 0...100)
+                        Slider(value: $deadZoneDegrees, in: 0...15, step: 0.5)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Max tilt for full speed (°)")
+                            Spacer()
+                            Text(String(format: "%.0f°", maxTiltDegrees))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Slider(value: $maxTiltDegrees, in: 10...45, step: 1)
+                    }
+                }
             }
 
             Divider()
@@ -46,34 +100,24 @@ struct PreferencesView: View {
                 }
                 .buttonStyle(.link)
 
-                Text("If scrolling does not work, make sure HeadFlow is enabled in Accessibility.")
+                Text("If scrolling does not work, make sure HeadFlow is enabled in Accessibility and that compatible headphones are connected.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true) // prevents truncation
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
         }
         .padding(20)
-        // Responsive frame: gives a reasonable minimum, but lets the window grow
         .frame(
             minWidth: 380,
-            idealWidth: 420,
+            idealWidth: 440,
             maxWidth: .infinity,
-            minHeight: 220,
-            idealHeight: 260,
+            minHeight: 260,
+            idealHeight: 320,
             maxHeight: .infinity,
             alignment: .topLeading
         )
-    }
-
-    /// Maps 0–100 sensitivity slider to roughly 1–10 scroll lines.
-    /// (To be used later by the motion engine.)
-    private func computedLines() -> Int32 {
-        let clamped = max(0.0, min(100.0, scrollSensitivity))
-        let normalized = clamped / 100.0
-        let lines = 1 + normalized * 9.0
-        return Int32(lines.rounded())
     }
 }
 
