@@ -43,6 +43,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var motionEngine = MotionEngine()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Make sure defaults exist even if user never opened Preferences.
+        HeadFlowSettings.registerDefaults()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
@@ -55,6 +58,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             action: nil,
             keyEquivalent: ""
         ))
+
+        // NEW: calibrate item
+        let calibrateItem = NSMenuItem(
+            title: "Calibrate head position",
+            action: #selector(calibrateHeadPosition),
+            keyEquivalent: ""
+        )
+        calibrateItem.target = self
+        menu.addItem(calibrateItem)
 
         let prefsItem = NSMenuItem(
             title: "Preferences…",
@@ -73,13 +85,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ))
 
         statusItem?.menu = menu
-        
+
         if #available(macOS 14.0, *) {
             motionEngine.start()
         } else {
             print("HeadFlow: headphone motion requires macOS 14 or later.")
         }
     }
+
 
     func applicationWillTerminate(_ notification: Notification) {
         if #available(macOS 14.0, *) {
@@ -99,8 +112,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
     }
+    
+    @objc func calibrateHeadPosition() {
+        if #available(macOS 14.0, *) {
+            motionEngine.calibrateNeutral()
+        }
+    }
+
 
     @objc func quit() {
         NSApp.terminate(nil)
     }
+    
+    
 }
