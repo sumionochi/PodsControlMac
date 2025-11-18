@@ -1,5 +1,6 @@
 import SwiftUI
 import Cocoa
+import CoreMotion
 
 @main
 struct HeadFlowMacApp: App {
@@ -38,6 +39,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var preferencesWindowController: PreferencesWindowController?
 
+    @available(macOS 14.0, *)
+    private lazy var motionEngine = MotionEngine()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -69,6 +73,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ))
 
         statusItem?.menu = menu
+        
+        if #available(macOS 14.0, *) {
+            motionEngine.start()
+        } else {
+            print("HeadFlow: headphone motion requires macOS 14 or later.")
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if #available(macOS 14.0, *) {
+            motionEngine.stop()
+        }
     }
 
     @objc func openPreferences() {

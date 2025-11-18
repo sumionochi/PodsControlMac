@@ -3,8 +3,11 @@ import AppKit
 
 /// Main preferences UI for HeadFlow.
 struct PreferencesView: View {
-    @AppStorage("isHeadScrollingEnabled") private var isHeadScrollingEnabled: Bool = true
-    @AppStorage("scrollSensitivity") private var scrollSensitivity: Double = 50.0
+    @AppStorage(HeadFlowSettings.keyIsHeadScrollingEnabled)
+    private var isHeadScrollingEnabled: Bool = true
+
+    @AppStorage(HeadFlowSettings.keyScrollSensitivity)
+    private var scrollSensitivity: Double = 50.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
