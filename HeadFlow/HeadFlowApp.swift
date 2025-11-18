@@ -3,7 +3,7 @@ import Cocoa
 import CoreMotion
 
 @main
-struct HeadFlowMacApp: App {
+struct HeadFlowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -38,12 +38,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var preferencesWindowController: PreferencesWindowController?
 
+    // Menu item we’ll update when user toggles head scrolling
+    private var headScrollingMenuItem: NSMenuItem?
+
     @available(macOS 14.0, *)
     private lazy var motionEngine = MotionEngine()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Register default settings so everything has sane values
-        // even before the user opens Preferences.
+        // Make sure defaults exist even if user never opened Preferences.
         HeadFlowSettings.registerDefaults()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -59,6 +61,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         ))
 
+        // NEW: head scrolling toggle item
+        let toggleItem = NSMenuItem(
+            title: headScrollingMenuTitle(),
+            action: #selector(toggleHeadScrolling),
+            keyEquivalent: ""
+        )
+        toggleItem.target = self
+        toggleItem.state = HeadFlowSettings.isHeadScrollingEnabled ? .on : .off
+        menu.addItem(toggleItem)
+        self.headScrollingMenuItem = toggleItem
+
+        // Existing calibrate item
         let calibrateItem = NSMenuItem(
             title: "Calibrate head position",
             action: #selector(calibrateHeadPosition),
@@ -67,6 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         calibrateItem.target = self
         menu.addItem(calibrateItem)
 
+        // Preferences
         let prefsItem = NSMenuItem(
             title: "Preferences…",
             action: #selector(openPreferences),
@@ -77,6 +92,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Quit
         menu.addItem(NSMenuItem(
             title: "Quit HeadFlow",
             action: #selector(quit),
@@ -98,6 +114,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Menu actions
+
     @objc func openPreferences() {
         if let controller = preferencesWindowController {
             controller.showWindow(nil)
@@ -117,7 +135,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Toggle global head scrolling on/off from the menu.
+    @objc func toggleHeadScrolling() {
+        HeadFlowSettings.isHeadScrollingEnabled.toggle()
+        updateHeadScrollingMenuItem()
+        print("HeadFlow: head scrolling is now \(HeadFlowSettings.isHeadScrollingEnabled ? "ON" : "OFF")")
+    }
+
     @objc func quit() {
         NSApp.terminate(nil)
+    }
+
+    // MARK: - Helpers
+
+    private func headScrollingMenuTitle() -> String {
+        HeadFlowSettings.isHeadScrollingEnabled
+            ? "Head scrolling: On"
+            : "Head scrolling: Off"
+    }
+
+    private func updateHeadScrollingMenuItem() {
+        guard let item = headScrollingMenuItem else { return }
+        item.title = headScrollingMenuTitle()
+        item.state = HeadFlowSettings.isHeadScrollingEnabled ? .on : .off
     }
 }
