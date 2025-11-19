@@ -1,5 +1,6 @@
 import Foundation
 import CoreMotion
+import AppKit
 
 /// Handles motion updates from compatible headphones (AirPods, Beats)
 /// and converts head tilt into scroll events using configurable settings.
@@ -67,8 +68,16 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         manager.stopDeviceMotionUpdates()
         print("MotionEngine: stopped device motion updates")
 
-        // When stopping, we can treat as "not connected" for now.
         HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
+    }
+
+    /// Safely get the bundle ID of the frontmost application.
+    private func frontmostBundleID() -> String? {
+        var id: String?
+        DispatchQueue.main.sync {
+            id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        }
+        return id
     }
 
     /// Called whenever new motion data arrives (on our background queue).
@@ -85,15 +94,22 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             return
         }
 
-        // Respect user setting (global ON/OFF).
+        // Global ON/OFF must be respected first.
         guard HeadFlowSettings.isHeadScrollingEnabled else { return }
 
-        // Current tuning settings.
-        let deadZoneDeg = max(0.0, HeadFlowSettings.deadZoneDegrees)
-        let maxTiltDeg  = max(1.0, HeadFlowSettings.maxTiltDegrees) // avoid /0
-        let baseLines   = HeadFlowSettings.baseLines()
-        let sensitivity = HeadFlowSettings.scrollSensitivity // 0–100
-        let mode        = HeadFlowSettings.scrollMode
+        // Resolve effective config for current app.
+        let bundleID = frontmostBundleID()
+        let config = ProfileManager.shared.effectiveConfig(for: bundleID)
+
+        // Also respect per-app enable flag.
+        guard config.isEnabled else { return }
+
+        // Current tuning settings for this app.
+        let deadZoneDeg = max(0.0, config.deadZoneDegrees)
+        let maxTiltDeg  = max(1.0, config.maxTiltDegrees) // avoid /0
+        let baseLines   = config.baseLines
+        let sensitivity = config.scrollSensitivity        // 0–100
+        let mode        = config.scrollMode
 
         // How far from neutral are we?
         guard let neutral = neutralPitchDeg else { return }
@@ -214,7 +230,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             neutralPitchDeg = last
             print("MotionEngine: manually calibrated neutral pitch = \(last)")
         } else {
-            // If we haven't received data yet, let auto-calibration handle it.
             neutralPitchDeg = nil
             print("MotionEngine: no motion samples yet – will auto-calibrate on next sample")
         }

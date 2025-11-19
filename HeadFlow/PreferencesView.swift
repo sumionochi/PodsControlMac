@@ -3,10 +3,13 @@ import AppKit
 
 /// Main preferences UI for HeadFlow.
 struct PreferencesView: View {
-    // Share live status from MotionEngine / AppDelegate
+    // Status from MotionEngine / AppDelegate
     @ObservedObject private var status: HeadFlowStatus
 
-    // Normal settings
+    // Per-app profiles
+    @ObservedObject private var profileManager = ProfileManager.shared
+
+    // Normal settings (global)
     @AppStorage(HeadFlowSettings.keyIsHeadScrollingEnabled)
     private var isHeadScrollingEnabled: Bool = HeadFlowSettings.defaultIsHeadScrollingEnabled
 
@@ -16,7 +19,7 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyBaseLines)
     private var baseLines: Double = HeadFlowSettings.defaultBaseLines
 
-    // Advanced tuning
+    // Advanced tuning (global)
     @AppStorage(HeadFlowSettings.keyDeadZoneDegrees)
     private var deadZoneDegrees: Double = HeadFlowSettings.defaultDeadZoneDegrees
 
@@ -32,10 +35,10 @@ struct PreferencesView: View {
         set { scrollModeRaw = newValue.rawValue }
     }
 
-    // Local UI-only state: when did we last hit "Re-check"?
+    // Local UI-only state
     @State private var lastStatusCheck: Date? = nil
 
-    // Use shared instance by default
+    // Use shared status by default
     init(status: HeadFlowStatus = .shared) {
         self._status = ObservedObject(wrappedValue: status)
     }
@@ -94,7 +97,7 @@ struct PreferencesView: View {
                     }
                 }
 
-                // MARK: - Normal settings
+                // MARK: - Normal settings (global)
                 GroupBox("Normal settings") {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle(isOn: $isHeadScrollingEnabled) {
@@ -127,7 +130,7 @@ struct PreferencesView: View {
                     }
                 }
 
-                // MARK: - Scroll behavior
+                // MARK: - Scroll behavior (global)
                 GroupBox("Scroll behavior") {
                     VStack(alignment: .leading, spacing: 10) {
                         Picker("Scroll mode", selection: $scrollModeRaw) {
@@ -144,8 +147,102 @@ struct PreferencesView: View {
                     }
                 }
 
-                // MARK: - Focused / advanced tuning
-                GroupBox("Focused tuning") {
+                // MARK: - Per-app behavior (beta)
+                GroupBox("Per-app behavior (beta)") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Live summary of which app/profile is active
+                        Text(status.currentProfileSummary)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text("To create a profile: while you are in Safari, Xcode, etc., open the HeadFlow menu in the menu bar and choose “Create profile for current app”. Profiles will then appear here for editing.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if profileManager.profiles.isEmpty {
+                            Text("No app-specific profiles yet. Global settings will be used everywhere.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 4)
+                        } else {
+                            ForEach(profileManager.profiles) { profile in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text(profile.appName)
+                                            .font(.headline)
+                                        Spacer()
+                                        Text(profile.bundleIdentifier)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+
+                                    // isEnabled binding
+                                    Toggle("Enable HeadFlow in this app",
+                                           isOn: binding(for: profile, keyPath: \.isEnabled))
+
+                                    // Per-app sensitivity
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text("Scroll sensitivity")
+                                            Spacer()
+                                            Text("\(Int(binding(for: profile, keyPath: \.scrollSensitivity).wrappedValue))")
+                                                .monospacedDigit()
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Slider(
+                                            value: binding(for: profile, keyPath: \.scrollSensitivity),
+                                            in: 0...100
+                                        )
+                                    }
+
+                                    // Per-app max lines
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text("Max lines per update")
+                                            Spacer()
+                                            Text("\(Int(binding(for: profile, keyPath: \.baseLines).wrappedValue.rounded()))")
+                                                .monospacedDigit()
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Slider(
+                                            value: binding(for: profile, keyPath: \.baseLines),
+                                            in: 1...20,
+                                            step: 1
+                                        )
+                                    }
+
+                                    // Per-app scroll mode
+                                    Picker("Scroll mode",
+                                           selection: binding(for: profile, keyPath: \.scrollModeRaw)) {
+                                        ForEach(ScrollMode.allCases) { mode in
+                                            Text(mode.displayName)
+                                                .tag(mode.rawValue)
+                                        }
+                                    }
+                                    .labelsHidden()
+
+                                    HStack {
+                                        Spacer()
+                                        Button(role: .destructive) {
+                                            ProfileManager.shared.removeProfile(profile)
+                                        } label: {
+                                            Text("Remove profile")
+                                        }
+                                    }
+
+                                    Divider()
+                                }
+                                .padding(.top, 6)
+                            }
+                        }
+                    }
+                }
+
+                // MARK: - Focused / advanced tuning (global)
+                GroupBox("Focused tuning (global)") {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
@@ -175,7 +272,7 @@ struct PreferencesView: View {
 
                 Divider()
 
-                // Troubleshooting section
+                // Troubleshooting
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Troubleshooting")
                         .font(.headline)
@@ -196,13 +293,12 @@ struct PreferencesView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(20)
         }
-        // Window size: fixed-ish, contents scroll vertically
         .frame(
             minWidth: 380,
-            idealWidth: 440,
+            idealWidth: 460,
             maxWidth: .infinity,
             minHeight: 260,
-            idealHeight: 380,
+            idealHeight: 420,
             maxHeight: .infinity,
             alignment: .topLeading
         )
@@ -210,6 +306,30 @@ struct PreferencesView: View {
             status.refreshAll()
             lastStatusCheck = Date()
         }
+    }
+
+    // MARK: - Helpers
+
+    /// Build a Binding to a specific property of a specific profile, using its id.
+    private func binding<Value>(
+        for profile: AppProfile,
+        keyPath: WritableKeyPath<AppProfile, Value>
+    ) -> Binding<Value> {
+        Binding<Value>(
+            get: {
+                guard let index = profileManager.profiles.firstIndex(where: { $0.id == profile.id }) else {
+                    // If profile disappeared, just return the old value.
+                    return profile[keyPath: keyPath]
+                }
+                return profileManager.profiles[index][keyPath: keyPath]
+            },
+            set: { newValue in
+                guard let index = profileManager.profiles.firstIndex(where: { $0.id == profile.id }) else {
+                    return
+                }
+                profileManager.profiles[index][keyPath: keyPath] = newValue
+            }
+        )
     }
 
     private func formattedTime(_ date: Date) -> String {

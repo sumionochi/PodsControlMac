@@ -36,20 +36,21 @@ class PreferencesWindowController: NSWindowController {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem?
     var preferencesWindowController: PreferencesWindowController?
 
-    // Menu item we’ll update when user toggles head scrolling
+    // Menu items we update dynamically
     private var headScrollingMenuItem: NSMenuItem?
+    private var summaryMenuItem: NSMenuItem?
 
     @available(macOS 14.0, *)
     private lazy var motionEngine = MotionEngine()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Make sure defaults exist even if user never opened Preferences.
         HeadFlowSettings.registerDefaults()
         HeadFlowStatus.shared.refreshAll()
+        HeadFlowStatus.shared.startObservingFrontmostApp()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -58,11 +59,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(
-            title: "HeadFlow Running",
+        menu.delegate = self
+
+        // Dynamic summary item (“HeadFlow is running – currently focused on …”)
+        let summaryItem = NSMenuItem(
+            title: HeadFlowStatus.shared.currentProfileSummary,
             action: nil,
             keyEquivalent: ""
-        ))
+        )
+        summaryItem.isEnabled = false
+        menu.addItem(summaryItem)
+        self.summaryMenuItem = summaryItem
 
         // Head scrolling toggle item
         let toggleItem = NSMenuItem(
@@ -83,6 +90,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         calibrateItem.target = self
         menu.addItem(calibrateItem)
+
+        // Per-app profile
+        let profileItem = NSMenuItem(
+            title: "Create profile for current app",
+            action: #selector(createProfileForCurrentApp),
+            keyEquivalent: "p"
+        )
+        profileItem.target = self
+        menu.addItem(profileItem)
 
         // Preferences
         let prefsItem = NSMenuItem(
@@ -117,6 +133,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - NSMenuDelegate
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        // Keep summary + toggle in sync with current state
+        summaryMenuItem?.title = HeadFlowStatus.shared.currentProfileSummary
+        updateHeadScrollingMenuItem()
+    }
+
     // MARK: - Menu actions
 
     @objc func openPreferences() {
@@ -132,13 +156,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc func createProfileForCurrentApp() {
+        ProfileManager.shared.addOrUpdateProfileForFrontmostApp()
+    }
+
     @objc func calibrateHeadPosition() {
         if #available(macOS 14.0, *) {
             motionEngine.calibrateNeutral()
         }
     }
 
-    /// Toggle global head scrolling on/off from the menu.
     @objc func toggleHeadScrolling() {
         HeadFlowSettings.isHeadScrollingEnabled.toggle()
         updateHeadScrollingMenuItem()

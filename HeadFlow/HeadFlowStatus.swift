@@ -38,6 +38,9 @@ final class HeadFlowStatus: ObservableObject {
     @Published var motionAuth: MotionAuth = .unknown
     @Published var headphones: HeadphoneStatus = .unknown
     @Published var accessibility: AccessibilityStatus = .unknown
+    @Published var frontmostAppName: String = "Unknown"
+    @Published var frontmostBundleIdentifier: String? = nil
+
 
     // MARK: - Updates
 
@@ -125,4 +128,40 @@ final class HeadFlowStatus: ObservableObject {
 
         return "Needs setup"
     }
+    
+    // MARK: - Frontmost app tracking
+
+    func startObservingFrontmostApp() {
+        updateFrontmostAppImmediately()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateFrontmostAppImmediately()
+        }
+    }
+
+    private func updateFrontmostAppImmediately() {
+        let app = NSWorkspace.shared.frontmostApplication
+        DispatchQueue.main.async {
+            self.frontmostAppName = app?.localizedName ?? "Unknown"
+            self.frontmostBundleIdentifier = app?.bundleIdentifier
+        }
+    }
+
+    // MARK: - Summary helpers
+    var currentProfileSummary: String {
+        guard let bundleID = frontmostBundleIdentifier else {
+            return "HeadFlow is running – using global settings (no active app bundle ID)."
+        }
+
+        if ProfileManager.shared.profile(for: bundleID) != nil {
+            return "HeadFlow is running – currently focused on \(frontmostAppName) (using per-app profile)."
+        } else {
+            return "HeadFlow is running – currently focused on \(frontmostAppName) (using global settings)."
+        }
+    }
+
 }
