@@ -42,12 +42,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Menu items we update dynamically
     private var headScrollingMenuItem: NSMenuItem?
+    private var launchAtLoginMenuItem: NSMenuItem?
     private var summaryMenuItem: NSMenuItem?
 
     @available(macOS 14.0, *)
     private lazy var motionEngine = MotionEngine()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Make sure defaults exist even if user never opened Preferences.
         HeadFlowSettings.registerDefaults()
         HeadFlowStatus.shared.refreshAll()
         HeadFlowStatus.shared.startObservingFrontmostApp()
@@ -61,7 +63,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        // Dynamic summary item (“HeadFlow is running – currently focused on …”)
+        // 🔹 Dynamic summary item (“HeadFlow is running – currently focused on …”)
         let summaryItem = NSMenuItem(
             title: HeadFlowStatus.shared.currentProfileSummary,
             action: nil,
@@ -70,6 +72,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         summaryItem.isEnabled = false
         menu.addItem(summaryItem)
         self.summaryMenuItem = summaryItem
+
+        menu.addItem(NSMenuItem.separator())
 
         // Head scrolling toggle item
         let toggleItem = NSMenuItem(
@@ -91,14 +95,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         calibrateItem.target = self
         menu.addItem(calibrateItem)
 
-        // Per-app profile
+        // Create per-app profile for whatever app is currently frontmost
         let profileItem = NSMenuItem(
             title: "Create profile for current app",
             action: #selector(createProfileForCurrentApp),
-            keyEquivalent: "p"
+            keyEquivalent: "p" // ⌘P when menu is open (optional)
         )
         profileItem.target = self
         menu.addItem(profileItem)
+
+        // --- NEW: Launch at Login submenu (A1) ---
+        let launchAtLoginItem = buildLaunchAtLoginMenu()
+        menu.addItem(launchAtLoginItem)
+        self.launchAtLoginMenuItem = launchAtLoginItem
+        updateLaunchAtLoginMenuChecks()
+        // -----------------------------------------
 
         // Preferences
         let prefsItem = NSMenuItem(
@@ -120,11 +131,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         statusItem?.menu = menu
 
+        // Start motion engine
         if #available(macOS 14.0, *) {
             motionEngine.start()
         } else {
             print("HeadFlow: headphone motion requires macOS 14 or later.")
         }
+
+        // Ensure system login item registration matches our stored setting.
+        LaunchAtLoginController.syncFromSettingsToSystem()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -133,12 +148,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // MARK: - NSMenuDelegate
+    // MARK: - Menu delegate
 
+    /// Called right before the menu is shown – keep the summary fresh.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // Keep summary + toggle in sync with current state
         summaryMenuItem?.title = HeadFlowStatus.shared.currentProfileSummary
-        updateHeadScrollingMenuItem()
     }
 
     // MARK: - Menu actions
@@ -166,6 +180,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Toggle global head scrolling on/off from the menu.
     @objc func toggleHeadScrolling() {
         HeadFlowSettings.isHeadScrollingEnabled.toggle()
         updateHeadScrollingMenuItem()
@@ -174,6 +189,50 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func quit() {
         NSApp.terminate(nil)
+    }
+
+    // MARK: - Launch at Login submenu
+
+    /// Builds the "Launch at Login" submenu with two choices.
+    private func buildLaunchAtLoginMenu() -> NSMenuItem {
+        let submenu = NSMenu()
+
+        for mode in LaunchAtLoginMode.allCases {
+            let item = NSMenuItem(
+                title: mode.menuTitle,
+                action: #selector(changeLaunchAtLoginMode(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.tag = mode.rawValue
+            submenu.addItem(item)
+        }
+
+        let parent = NSMenuItem(
+            title: "Launch at Login",
+            action: nil,
+            keyEquivalent: ""
+        )
+        parent.submenu = submenu
+        return parent
+    }
+
+    /// User clicked one of the "Launch at Login" options.
+    @objc private func changeLaunchAtLoginMode(_ sender: NSMenuItem) {
+        guard let newMode = LaunchAtLoginMode(rawValue: sender.tag) else { return }
+        HeadFlowSettings.launchAtLoginMode = newMode
+        updateLaunchAtLoginMenuChecks()
+        LaunchAtLoginController.syncFromSettingsToSystem()
+    }
+
+    /// Checkmark the currently selected launch mode.
+    private func updateLaunchAtLoginMenuChecks() {
+        guard let submenu = launchAtLoginMenuItem?.submenu else { return }
+        let currentRaw = HeadFlowSettings.launchAtLoginMode.rawValue
+
+        for item in submenu.items {
+            item.state = (item.tag == currentRaw) ? .on : .off
+        }
     }
 
     // MARK: - Helpers

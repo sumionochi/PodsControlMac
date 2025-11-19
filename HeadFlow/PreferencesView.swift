@@ -147,8 +147,8 @@ struct PreferencesView: View {
                     }
                 }
 
-                // MARK: - Per-app behavior (beta)
-                GroupBox("Per-app behavior (beta)") {
+                // MARK: - Per-app behavior
+                GroupBox("Per-app behavior") {
                     VStack(alignment: .leading, spacing: 10) {
                         // Live summary of which app/profile is active
                         Text(status.currentProfileSummary)

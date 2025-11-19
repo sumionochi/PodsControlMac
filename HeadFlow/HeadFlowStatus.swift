@@ -154,13 +154,13 @@ final class HeadFlowStatus: ObservableObject {
     // MARK: - Summary helpers
     var currentProfileSummary: String {
         guard let bundleID = frontmostBundleIdentifier else {
-            return "HeadFlow is running – using global settings (no active app bundle ID)."
+            return "Using global settings (no active app)"
         }
 
         if ProfileManager.shared.profile(for: bundleID) != nil {
-            return "HeadFlow is running – currently focused on \(frontmostAppName) (using per-app profile)."
+            return "Currently focused on \(frontmostAppName) (using per-app profile)"
         } else {
-            return "HeadFlow is running – currently focused on \(frontmostAppName) (using global settings)."
+            return "Currently focused on \(frontmostAppName) (using global settings)"
         }
     }
 

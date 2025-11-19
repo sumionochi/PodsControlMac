@@ -2,33 +2,42 @@ import Foundation
 
 /// Central place for user defaults keys / default values.
 enum HeadFlowSettings {
-    // Keys
+    // MARK: - Keys
+
     static let keyIsHeadScrollingEnabled = "isHeadScrollingEnabled"
     static let keyScrollSensitivity      = "scrollSensitivity"
+    static let keyBaseLines              = "baseLines"
     static let keyDeadZoneDegrees        = "deadZoneDegrees"
     static let keyMaxTiltDegrees         = "maxTiltDegrees"
-    static let keyBaseLines              = "baseLines"
-    static let keyScrollMode             = "scrollMode"
+    static let keyScrollMode             = "scrollModeRaw"
+    static let keyLaunchAtLoginMode      = "launchAtLoginMode"
 
-    // Defaults
-    static let defaultIsHeadScrollingEnabled: Bool   = true
-    static let defaultScrollSensitivity: Double      = 50.0   // 0–100
-    static let defaultDeadZoneDegrees: Double        = 3.0    // degrees
-    static let defaultMaxTiltDegrees: Double         = 25.0   // degrees
-    static let defaultBaseLines: Double              = 5.0    // 1–20 recommended
-    static let defaultScrollModeRaw: Int             = ScrollMode.continuous.rawValue
+    // MARK: - Defaults
+
+    static let defaultIsHeadScrollingEnabled = true
+    static let defaultScrollSensitivity      = 50.0
+    static let defaultBaseLines              = 8.0      // max lines per update
+    static let defaultDeadZoneDegrees        = 3.0
+    static let defaultMaxTiltDegrees         = 25.0
+    static let defaultScrollModeRaw          = ScrollMode.continuous.rawValue
+    static let defaultLaunchAtLoginModeRaw   = LaunchAtLoginMode.onlyWhenOpening.rawValue
+
+    // MARK: - Register defaults
 
     /// Ensure reasonable defaults exist even if user never opened Preferences.
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             keyIsHeadScrollingEnabled: defaultIsHeadScrollingEnabled,
             keyScrollSensitivity:      defaultScrollSensitivity,
+            keyBaseLines:              defaultBaseLines,
             keyDeadZoneDegrees:        defaultDeadZoneDegrees,
             keyMaxTiltDegrees:         defaultMaxTiltDegrees,
-            keyBaseLines:              defaultBaseLines,
-            keyScrollMode:             defaultScrollModeRaw
+            keyScrollMode:             defaultScrollModeRaw,
+            keyLaunchAtLoginMode:      defaultLaunchAtLoginModeRaw
         ])
     }
+
+    // MARK: - Global settings accessors
 
     static var isHeadScrollingEnabled: Bool {
         get {
@@ -50,12 +59,20 @@ enum HeadFlowSettings {
         }
     }
 
+    static var baseLinesValue: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyBaseLines) as? Double)
+            ?? defaultBaseLines
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyBaseLines)
+        }
+    }
+
     static var deadZoneDegrees: Double {
         get {
-            if UserDefaults.standard.object(forKey: keyDeadZoneDegrees) == nil {
-                return defaultDeadZoneDegrees
-            }
-            return UserDefaults.standard.double(forKey: keyDeadZoneDegrees)
+            (UserDefaults.standard.object(forKey: keyDeadZoneDegrees) as? Double)
+            ?? defaultDeadZoneDegrees
         }
         set {
             UserDefaults.standard.set(newValue, forKey: keyDeadZoneDegrees)
@@ -64,43 +81,44 @@ enum HeadFlowSettings {
 
     static var maxTiltDegrees: Double {
         get {
-            if UserDefaults.standard.object(forKey: keyMaxTiltDegrees) == nil {
-                return defaultMaxTiltDegrees
-            }
-            return UserDefaults.standard.double(forKey: keyMaxTiltDegrees)
+            (UserDefaults.standard.object(forKey: keyMaxTiltDegrees) as? Double)
+            ?? defaultMaxTiltDegrees
         }
         set {
             UserDefaults.standard.set(newValue, forKey: keyMaxTiltDegrees)
         }
     }
 
-    /// Raw base lines as stored (double, slider)
-    static var baseLinesRaw: Double {
+    static var scrollModeRaw: Int {
         get {
-            if UserDefaults.standard.object(forKey: keyBaseLines) == nil {
-                return defaultBaseLines
-            }
-            return UserDefaults.standard.double(forKey: keyBaseLines)
+            (UserDefaults.standard.object(forKey: keyScrollMode) as? Int)
+            ?? defaultScrollModeRaw
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: keyBaseLines)
+            UserDefaults.standard.set(newValue, forKey: keyScrollMode)
         }
-    }
-
-    /// Base scroll lines per update, clamped to 1–20.
-    static func baseLines() -> Int32 {
-        let clamped = max(1.0, min(20.0, baseLinesRaw))
-        return Int32(clamped.rounded())
     }
 
     static var scrollMode: ScrollMode {
+        get { ScrollMode(rawValue: scrollModeRaw) ?? .continuous }
+        set { scrollModeRaw = newValue.rawValue }
+    }
+
+    static var launchAtLoginMode: LaunchAtLoginMode {
         get {
-            let raw = UserDefaults.standard.object(forKey: keyScrollMode) as? Int
-                ?? defaultScrollModeRaw
-            return ScrollMode(rawValue: raw) ?? .continuous
+            let raw = (UserDefaults.standard.object(forKey: keyLaunchAtLoginMode) as? Int)
+                      ?? defaultLaunchAtLoginModeRaw
+            return LaunchAtLoginMode(rawValue: raw) ?? .onlyWhenOpening
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: keyScrollMode)
+            UserDefaults.standard.set(newValue.rawValue, forKey: keyLaunchAtLoginMode)
         }
+    }
+
+    // MARK: - Helpers used by MotionEngine, etc.
+
+    /// Integer version of baseLinesValue for scroll engine.
+    static func baseLines() -> Int32 {
+        Int32(baseLinesValue.rounded())
     }
 }
