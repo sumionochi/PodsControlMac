@@ -14,16 +14,14 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
     private var lastPitchDeg: Double?
     private var neutralPitchDeg: Double?
 
-    // Timing & accumulators for different modes.
-    // Step mode still uses a simple time-based rate limiter.
-    private var lastStepTime: TimeInterval?
-
-    // Continuous mode: time-based velocity with signed accumulator.
+    // Continuous mode: smoothed velocity (lines per second) + accumulator.
     private var lastContinuousTime: TimeInterval?
+    private var continuousCurrentSpeed: Double = 0.0   // lines / second
     private var continuousAccumulator: Double = 0.0
 
-    // Auto-read mode: time-based velocity with downward-only accumulator.
+    // Auto-read mode: smoothed downward velocity + accumulator.
     private var lastAutoReadTime: TimeInterval?
+    private var autoReadCurrentSpeed: Double = 0.0     // lines / second (downward)
     private var autoReadAccumulator: Double = 0.0
 
     override init() {
@@ -77,6 +75,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         print("MotionEngine: stopped device motion updates")
 
         HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
+        hardStopScrolling()
     }
 
     /// Safely get the bundle ID of the frontmost application.
@@ -88,13 +87,15 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         return id
     }
 
-    /// Reset timing/accumulators when we’re in the dead zone (no scrolling).
-    private func resetScrollStateOnNeutral() {
+    /// Immediately stop all scrolling and reset timing.
+    private func hardStopScrolling() {
         lastContinuousTime = nil
+        continuousCurrentSpeed = 0.0
         continuousAccumulator = 0.0
+
         lastAutoReadTime = nil
+        autoReadCurrentSpeed = 0.0
         autoReadAccumulator = 0.0
-        // Step mode just uses a coarse rate limit; no reset needed.
     }
 
     /// Called whenever new motion data arrives (on our background queue).
@@ -113,7 +114,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
         // Global ON/OFF must be respected first.
         guard HeadFlowSettings.isHeadScrollingEnabled else {
-            resetScrollStateOnNeutral()
+            hardStopScrolling()
             return
         }
 
@@ -123,7 +124,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
         // Also respect per-app enable flag.
         guard config.isEnabled else {
-            resetScrollStateOnNeutral()
+            hardStopScrolling()
             return
         }
 
@@ -131,23 +132,23 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         let deadZoneDeg = max(0.0, config.deadZoneDegrees)
         let maxTiltDeg  = max(1.0, config.maxTiltDegrees) // avoid /0
         let baseLines   = max(Int32(0), min(Int32(500), config.baseLines)) // safety clamp
-        let sensitivity = max(0.0, min(100.0, config.scrollSensitivity)) // 0–100
+        let sensitivity = max(0.0, min(100.0, config.scrollSensitivity))   // 0–100
         let mode        = config.scrollMode
 
         // How far from neutral are we?
         guard let neutral = neutralPitchDeg else { return }
         let delta = pitchDeg - neutral
 
-        // If within dead zone, don't scroll at all and reset timing.
-        if abs(delta) < deadZoneDeg {
-            resetScrollStateOnNeutral()
-            return
-        }
+        // Map tilt to [-1, 1] and magnitude to [0, 1], but treat dead zone
+        // as "no tilt" (factor = 0, magnitude = 0) so smoothing can ease to 0.
+        var factor: Double = 0.0     // -1...1, sign gives direction (up/down)
+        var magnitude: Double = 0.0  // 0...1, how strong the tilt is
 
-        // Clamp tilt to max range and map to [-1, 1].
-        let clamped = max(-maxTiltDeg, min(maxTiltDeg, delta))
-        let factor = clamped / maxTiltDeg              // -1 ... 1
-        let magnitude = abs(factor)                    // 0 ... 1
+        if abs(delta) >= deadZoneDeg {
+            let clamped = max(-maxTiltDeg, min(maxTiltDeg, delta))
+            factor = clamped / maxTiltDeg
+            magnitude = abs(factor)
+        }
 
         // Map sensitivity slider (0–100) to a wide speed multiplier range.
         // 0  → very slow (0.1x)
@@ -176,11 +177,10 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         }
     }
 
-    // MARK: - Continuous mode
+    // MARK: - Continuous mode (smoothed)
 
-    /// Continuous mode: scroll speed scales smoothly with tilt, using a
-    /// time-based "lines per second" model and an accumulator so we
-    /// can get *truly* slow or fast scrolling.
+    /// Continuous mode: scroll speed scales with tilt, using a smoothed
+    /// velocity (lines per second) so start/stop feel gradual.
     private func handleContinuousScroll(
         factor: Double,
         magnitude: Double,
@@ -196,25 +196,44 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         }
 
         var dt = now - lastTime
-        // Clamp dt to avoid huge jumps after pauses.
+        // Clamp dt to avoid huge jumps if updates pause.
         dt = max(0.0, min(dt, 0.1))
         lastContinuousTime = now
 
         guard dt > 0 else { return }
 
-        // Base "max lines per second" at full tilt, then scale by sensitivity.
+        // Max possible speed at full tilt (magnitude = 1).
         let maxLinesPerSecond = Double(baseLines) * speedMultiplier
 
-        // Scale by magnitude (0...1) to get actual velocity.
-        let linesPerSecond = maxLinesPerSecond * magnitude
+        // Desired speed based on current tilt. If we're inside the dead zone,
+        // factor and magnitude will both be 0 → targetSpeed = 0.
+        let direction: Double
+        if factor > 0 {
+            direction = 1.0
+        } else if factor < 0 {
+            direction = -1.0
+        } else {
+            direction = 0.0
+        }
 
-        // Direction: up for positive tilt, down for negative.
-        let direction = factor > 0 ? 1.0 : -1.0
+        let targetSpeed = maxLinesPerSecond * magnitude * direction   // lines / second
 
-        // Accumulate signed lines.
-        continuousAccumulator += linesPerSecond * direction * dt
+        // Smooth speed changes with an exponential filter so we ease in/out.
+        // tau ≈ 0.15s → feels responsive but not jerky.
+        let responseTime: Double = 0.15
+        let alpha = 1.0 - exp(-dt / responseTime)   // 0...1
 
-        // Emit only the integer part, keep fractional remainder.
+        continuousCurrentSpeed += (targetSpeed - continuousCurrentSpeed) * alpha
+
+        // Snap very small speeds to zero to avoid tiny residual drift.
+        if abs(continuousCurrentSpeed) < 0.01 {
+            continuousCurrentSpeed = 0.0
+        }
+
+        // Integrate speed over time to get how many lines to scroll.
+        continuousAccumulator += continuousCurrentSpeed * dt
+
+        // Use the integer part and keep the fractional remainder.
         let linesToScroll = Int32(continuousAccumulator)
 
         if linesToScroll == 0 { return }
@@ -228,25 +247,17 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         }
     }
 
-    // MARK: - Auto-read mode
+    // MARK: - Auto-read mode (smoothed)
 
     /// Auto-read mode: tilt down slightly to trigger slow downward scroll,
-    /// using a time-based "lines per second" model. Sensitivity and baseLines
-    /// both influence the pace.
+    /// using a smoothed "lines per second" model so it eases in/out like
+    /// a teleprompter.
     private func handleAutoReadScroll(
         factor: Double,
         magnitude: Double,
         baseLines: Int32,
         speedMultiplier: Double
     ) {
-        // Only scroll when tilted down (negative factor).
-        guard factor < 0 else {
-            // Reset timing when we are no longer in auto-read posture.
-            lastAutoReadTime = nil
-            autoReadAccumulator = 0.0
-            return
-        }
-
         let now = CFAbsoluteTimeGetCurrent()
 
         // First sample → just initialize timestamp.
@@ -266,20 +277,32 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         let autoReadGlobalFactor: Double = 0.5
         let maxLinesPerSecond = Double(baseLines) * speedMultiplier * autoReadGlobalFactor
 
-        // Ignore tiny tilts so you can sit near neutral without jitter.
+        // Only scroll when tilted down. When factor >= 0, targetSpeed = 0 and
+        // smoothing will gracefully decelerate to a stop.
         let minMagnitudeForScroll = 0.05
         let effectiveMagnitude: Double
-        if magnitude <= minMagnitudeForScroll {
+        if factor >= 0 || magnitude <= minMagnitudeForScroll {
             effectiveMagnitude = 0.0
         } else {
             // Re-map [minMag, 1] → [0, 1]
             effectiveMagnitude = (magnitude - minMagnitudeForScroll) / (1.0 - minMagnitudeForScroll)
         }
 
-        let linesPerSecond = maxLinesPerSecond * effectiveMagnitude
+        // Target downward speed (always positive, lines/sec).
+        let targetSpeed = maxLinesPerSecond * effectiveMagnitude
 
-        // Accumulate lines to scroll down (always positive).
-        autoReadAccumulator += linesPerSecond * dt
+        // Smooth speed changes; slightly more relaxed than continuous.
+        let responseTime: Double = 0.25
+        let alpha = 1.0 - exp(-dt / responseTime)
+
+        autoReadCurrentSpeed += (targetSpeed - autoReadCurrentSpeed) * alpha
+
+        if autoReadCurrentSpeed < 0.01 {
+            autoReadCurrentSpeed = 0.0
+        }
+
+        // Integrate downward speed.
+        autoReadAccumulator += autoReadCurrentSpeed * dt
 
         let linesToScroll = Int32(autoReadAccumulator)
         guard linesToScroll > 0 else { return }
@@ -305,13 +328,13 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         print("MotionEngine: headphones connected")
         HeadFlowStatus.shared.setHeadphonesStatus(.connected)
         neutralPitchDeg = nil
-        resetScrollStateOnNeutral()
+        hardStopScrolling()
     }
 
     func headphoneMotionManagerDidDisconnect(_ manager: CMHeadphoneMotionManager) {
         print("MotionEngine: headphones disconnected")
         HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
         neutralPitchDeg = nil
-        resetScrollStateOnNeutral()
+        hardStopScrolling()
     }
 }
