@@ -53,6 +53,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         HeadFlowSettings.registerDefaults()
         HeadFlowStatus.shared.refreshAll()
         HeadFlowStatus.shared.startObservingFrontmostApp()
+        PointerActivityMonitor.shared.start()
+        TypingActivityMonitor.shared.start()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 

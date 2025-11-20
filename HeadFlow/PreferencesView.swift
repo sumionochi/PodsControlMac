@@ -36,6 +36,15 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyDampingFactor)
     private var dampingFactor: Double = HeadFlowSettings.defaultDampingFactor
     
+    @AppStorage(HeadFlowSettings.keyPauseWhilePointerActive)
+    private var pauseWhilePointerActive: Bool = HeadFlowSettings.defaultPauseWhilePointerActive
+
+    @AppStorage(HeadFlowSettings.keyPauseWhileTyping)
+    private var pauseWhileTyping: Bool = HeadFlowSettings.defaultPauseWhileTyping
+
+    @AppStorage(HeadFlowSettings.keyShiftToPauseEnabled)
+    private var shiftToPauseEnabled: Bool = HeadFlowSettings.defaultShiftToPauseEnabled
+    
     // Scroll mode (stored as raw Int)
     @AppStorage(HeadFlowSettings.keyScrollMode)
     private var scrollModeRaw: Int = HeadFlowSettings.defaultScrollModeRaw
@@ -435,7 +444,7 @@ struct PreferencesView: View {
                             }
 
                             // 0.5x = softer ramp-in, 2.0x = snappy
-                            Slider(value: $accelerationFactor, in: 0.5...2.0, step: 0.05)
+                            Slider(value: $accelerationFactor, in: 0.5...5.0, step: 0.05)
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
@@ -448,8 +457,34 @@ struct PreferencesView: View {
                             }
 
                             // 0.5x = long glide, 2.0x = quick stop
-                            Slider(value: $dampingFactor, in: 0.5...2.0, step: 0.05)
+                            Slider(value: $dampingFactor, in: 0.5...5.0, step: 0.05)
                         }
+                    }
+                }
+                
+                // MARK: - Safety
+                GroupBox("Safety") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("Pause while mouse/trackpad is moving",
+                               isOn: $pauseWhilePointerActive)
+
+                        Text("When enabled, HeadFlow pauses while you actively move the cursor.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        Toggle("Pause while typing",
+                               isOn: $pauseWhileTyping)
+
+                        Text("Prevents head scrolling while you are typing in any app.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        Toggle("Hold ⇧ to temporarily disable HeadFlow",
+                               isOn: $shiftToPauseEnabled)
+
+                        Text("Use the Shift key as a clutch to pause head-based scrolling.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -559,6 +594,12 @@ struct PreferencesView: View {
             return ("Disconnected", .red)
         case .needsSetup:
             return ("Needs setup", .orange)
+        case .pausedPointer:
+            return ("Paused – mouse", .secondary)
+        case .pausedTyping:
+            return ("Paused – typing", .secondary)
+        case .pausedModifier:
+            return ("Paused – ⇧ held", .secondary)
         }
     }
 

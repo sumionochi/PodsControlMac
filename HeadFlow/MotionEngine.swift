@@ -6,6 +6,12 @@ import AppKit
 /// and converts head tilt into scroll events using configurable settings.
 @available(macOS 14.0, *)
 final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
+    
+    private enum PauseReason {
+        case pointer
+        case typing
+        case modifier
+    }
 
     private let manager = CMHeadphoneMotionManager()
     private let queue = OperationQueue()
@@ -126,6 +132,21 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             live.status = .idle
         }
     }
+    
+    private func publishPausedStatus(_ reason: PauseReason) {
+        DispatchQueue.main.async {
+            let live = MotionLiveState.shared
+            switch reason {
+            case .pointer:
+                live.status = .pausedPointer
+            case .typing:
+                live.status = .pausedTyping
+            case .modifier:
+                live.status = .pausedModifier
+            }
+            live.velocityLinesPerSecond = 0.0
+        }
+    }
 
     /// Called whenever new motion data arrives (on our background queue).
     private func handle(motion: CMDeviceMotion) {
@@ -154,6 +175,30 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         // Also respect per-app enable flag.
         guard config.isEnabled else {
             hardStopScrolling()
+            return
+        }
+        
+        // --- Safety: Shift clutch ---
+        if HeadFlowSettings.shiftToPauseEnabled,
+           NSEvent.modifierFlags.contains(.shift) {
+            hardStopScrolling()
+            publishPausedStatus(.modifier)
+            return
+        }
+
+        // --- Safety: pointer movement ---
+        if HeadFlowSettings.pauseWhilePointerActive,
+           PointerActivityMonitor.shared.isRecentlyActive(threshold: 0.25) {
+            hardStopScrolling()
+            publishPausedStatus(.pointer)
+            return
+        }
+
+        // --- Safety: typing activity ---
+        if HeadFlowSettings.pauseWhileTyping,
+           TypingActivityMonitor.shared.isRecentlyActive(threshold: 0.40) {
+            hardStopScrolling()
+            publishPausedStatus(.typing)
             return
         }
 
@@ -239,8 +284,8 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         guard dt > 0 else { return }
         
         // Map user tuning (0.5x ... 2.0x) to time constants.
-        let accelFactor = max(0.5, min(2.0, HeadFlowSettings.accelerationFactor))
-        let dampingFactor = max(0.5, min(2.0, HeadFlowSettings.dampingFactor))
+        let accelFactor = max(0.5, min(5.0, HeadFlowSettings.accelerationFactor))
+        let dampingFactor = max(0.5, min(5.0, HeadFlowSettings.dampingFactor))
 
         // Baseline time constants (seconds).
         let baseTauUp: Double = 0.14   // how fast we ramp up
@@ -327,8 +372,8 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         guard dt > 0 else { return }
         
         // Map user tuning (0.5x ... 2.0x) to time constants.
-        let accelFactor = max(0.5, min(2.0, HeadFlowSettings.accelerationFactor))
-        let dampingFactor = max(0.5, min(2.0, HeadFlowSettings.dampingFactor))
+        let accelFactor = max(0.5, min(5.0, HeadFlowSettings.accelerationFactor))
+        let dampingFactor = max(0.5, min(5.0, HeadFlowSettings.dampingFactor))
 
         // Baseline time constants (seconds) for auto-read.
         let baseTauUp: Double = 0.25

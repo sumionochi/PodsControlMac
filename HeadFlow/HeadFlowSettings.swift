@@ -11,6 +11,11 @@ enum HeadFlowSettings {
     static let keyMaxTiltDegrees         = "maxTiltDegrees"
     static let keyScrollMode             = "scrollModeRaw"
     static let keyLaunchAtLoginMode      = "launchAtLoginMode"
+    static let keyAccelerationFactor   = "accelerationFactor"
+    static let keyDampingFactor        = "dampingFactor"
+    static let keyPauseWhilePointerActive = "pauseWhilePointerActive"
+    static let keyPauseWhileTyping        = "pauseWhileTyping"
+    static let keyShiftToPauseEnabled     = "shiftToPauseEnabled"
 
     // MARK: - Defaults
 
@@ -21,6 +26,12 @@ enum HeadFlowSettings {
     static let defaultMaxTiltDegrees         = 25.0
     static let defaultScrollModeRaw          = ScrollMode.continuous.rawValue
     static let defaultLaunchAtLoginModeRaw   = LaunchAtLoginMode.onlyWhenOpening.rawValue
+    static let defaultAccelerationFactor = 1.0   // 1.0 = baseline ramp feel
+    static let defaultDampingFactor      = 1.0   // 1.0 = baseline slowdown feel
+    static let defaultPauseWhilePointerActive = true
+    static let defaultPauseWhileTyping        = true
+    static let defaultShiftToPauseEnabled     = true
+
 
     // MARK: - Register defaults
 
@@ -33,7 +44,12 @@ enum HeadFlowSettings {
             keyDeadZoneDegrees:        defaultDeadZoneDegrees,
             keyMaxTiltDegrees:         defaultMaxTiltDegrees,
             keyScrollMode:             defaultScrollModeRaw,
-            keyLaunchAtLoginMode:      defaultLaunchAtLoginModeRaw
+            keyLaunchAtLoginMode:      defaultLaunchAtLoginModeRaw,
+            keyAccelerationFactor:     defaultAccelerationFactor,
+            keyDampingFactor:          defaultDampingFactor,
+            keyPauseWhilePointerActive: defaultPauseWhilePointerActive,
+            keyPauseWhileTyping:        defaultPauseWhileTyping,
+            keyShiftToPauseEnabled:     defaultShiftToPauseEnabled
         ])
     }
 
@@ -112,6 +128,56 @@ enum HeadFlowSettings {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: keyLaunchAtLoginMode)
+        }
+    }
+
+    static var accelerationFactor: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyAccelerationFactor) as? Double)
+            ?? defaultAccelerationFactor
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyAccelerationFactor)
+        }
+    }
+
+    static var dampingFactor: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyDampingFactor) as? Double)
+            ?? defaultDampingFactor
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyDampingFactor)
+        }
+    }
+    
+    static var pauseWhilePointerActive: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyPauseWhilePointerActive) as? Bool)
+            ?? defaultPauseWhilePointerActive
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyPauseWhilePointerActive)
+        }
+    }
+
+    static var pauseWhileTyping: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyPauseWhileTyping) as? Bool)
+            ?? defaultPauseWhileTyping
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyPauseWhileTyping)
+        }
+    }
+
+    static var shiftToPauseEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyShiftToPauseEnabled) as? Bool)
+            ?? defaultShiftToPauseEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyShiftToPauseEnabled)
         }
     }
 
