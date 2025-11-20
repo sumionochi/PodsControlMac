@@ -14,7 +14,7 @@ struct AppProfile: Identifiable, Codable, Hashable {
     /// 0–100, same scale as global sensitivity.
     var scrollSensitivity: Double
 
-    /// 1–20 lines per update.
+    /// 1–500 lines per update.
     var baseLines: Double
 
     /// Per-app advanced tuning (initially copied from global).
@@ -141,7 +141,7 @@ final class ProfileManager: ObservableObject {
             isEnabled: profile.isEnabled,
             scrollSensitivity: profile.scrollSensitivity,
             baseLines: {
-                let clamped = max(1.0, min(20.0, profile.baseLines))
+                let clamped = max(0.0, min(500.0, profile.baseLines))
                 return Int32(clamped.rounded())
             }(),
             deadZoneDegrees: profile.deadZoneDegrees,

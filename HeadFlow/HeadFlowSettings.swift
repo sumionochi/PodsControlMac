@@ -16,7 +16,7 @@ enum HeadFlowSettings {
 
     static let defaultIsHeadScrollingEnabled = true
     static let defaultScrollSensitivity      = 50.0
-    static let defaultBaseLines              = 8.0      // max lines per update
+    static let defaultBaseLines              = 60.0      // max lines per update
     static let defaultDeadZoneDegrees        = 3.0
     static let defaultMaxTiltDegrees         = 25.0
     static let defaultScrollModeRaw          = ScrollMode.continuous.rawValue

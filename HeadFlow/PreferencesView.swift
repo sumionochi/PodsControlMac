@@ -38,6 +38,9 @@ struct PreferencesView: View {
     // Local UI-only state
     @State private var lastStatusCheck: Date? = nil
 
+    // Preset options for max lines: 0, 5, 10, ..., 495, 500
+    private let baseLinesOptions: [Double] = Array(stride(from: 0.0, through: 500.0, by: 5.0))
+
     // Use shared status by default
     init(status: HeadFlowStatus = .shared) {
         self._status = ObservedObject(wrappedValue: status)
@@ -116,16 +119,28 @@ struct PreferencesView: View {
                             Slider(value: $scrollSensitivity, in: 0...100)
                         }
 
+                        // Picker for 0–500 max lines (every 5)
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text("Max scroll lines per update")
+                                Text("Max scroll lines at full tilt")
                                 Spacer()
                                 Text("\(Int(baseLines.rounded()))")
                                     .monospacedDigit()
                                     .foregroundStyle(.secondary)
                             }
 
-                            Slider(value: $baseLines, in: 1...20, step: 1)
+                            let selection = Binding<Double>(
+                                get: { nearestBaseLinesOption(for: baseLines) },
+                                set: { newValue in baseLines = newValue }
+                            )
+
+                            Picker("Max scroll lines at full tilt", selection: selection) {
+                                ForEach(baseLinesOptions, id: \.self) { value in
+                                    Text("\(Int(value))")
+                                        .tag(value)
+                                }
+                            }
+                            .pickerStyle(.menu)
                         }
                     }
                 }
@@ -198,20 +213,30 @@ struct PreferencesView: View {
                                         )
                                     }
 
-                                    // Per-app max lines
+                                    // Per-app max lines via Picker (0–500, every 5)
                                     VStack(alignment: .leading, spacing: 4) {
+                                        let rawBaseLinesBinding = binding(for: profile, keyPath: \.baseLines)
+
                                         HStack {
-                                            Text("Max lines per update")
+                                            Text("Max lines at full tilt")
                                             Spacer()
-                                            Text("\(Int(binding(for: profile, keyPath: \.baseLines).wrappedValue.rounded()))")
+                                            Text("\(Int(rawBaseLinesBinding.wrappedValue.rounded()))")
                                                 .monospacedDigit()
                                                 .foregroundStyle(.secondary)
                                         }
-                                        Slider(
-                                            value: binding(for: profile, keyPath: \.baseLines),
-                                            in: 1...20,
-                                            step: 1
+
+                                        let selection = Binding<Double>(
+                                            get: { nearestBaseLinesOption(for: rawBaseLinesBinding.wrappedValue) },
+                                            set: { newValue in rawBaseLinesBinding.wrappedValue = newValue }
                                         )
+
+                                        Picker("Max lines at full tilt", selection: selection) {
+                                            ForEach(baseLinesOptions, id: \.self) { value in
+                                                Text("\(Int(value))")
+                                                    .tag(value)
+                                            }
+                                        }
+                                        .pickerStyle(.menu)
                                     }
 
                                     // Per-app scroll mode
@@ -303,8 +328,15 @@ struct PreferencesView: View {
             alignment: .topLeading
         )
         .onAppear {
+            // Keep status fresh
             status.refreshAll()
             lastStatusCheck = Date()
+
+            // Fix any invalid scrollModeRaw (e.g. old "step" = 1) to a valid value.
+            let validModes = Set(ScrollMode.allCases.map { $0.rawValue })
+            if !validModes.contains(scrollModeRaw) {
+                scrollModeRaw = ScrollMode.continuous.rawValue
+            }
         }
     }
 
@@ -330,6 +362,14 @@ struct PreferencesView: View {
                 profileManager.profiles[index][keyPath: keyPath] = newValue
             }
         )
+    }
+
+    /// Snap an arbitrary baseLines value to the nearest preset option.
+    private func nearestBaseLinesOption(for value: Double) -> Double {
+        guard let nearest = baseLinesOptions.min(by: { abs($0 - value) < abs($1 - value) }) else {
+            return value
+        }
+        return nearest
     }
 
     private func formattedTime(_ date: Date) -> String {
