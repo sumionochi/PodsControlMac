@@ -237,6 +237,17 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         lastContinuousTime = now
 
         guard dt > 0 else { return }
+        
+        // Map user tuning (0.5x ... 2.0x) to time constants.
+        let accelFactor = max(0.5, min(2.0, HeadFlowSettings.accelerationFactor))
+        let dampingFactor = max(0.5, min(2.0, HeadFlowSettings.dampingFactor))
+
+        // Baseline time constants (seconds).
+        let baseTauUp: Double = 0.14   // how fast we ramp up
+        let baseTauDown: Double = 0.40 // how fast we slow down
+
+        let tauUp = baseTauUp / accelFactor      // higher accelFactor = snappier
+        let tauDown = baseTauDown / dampingFactor // higher dampingFactor = quicker stop
 
         // Max possible speed at full tilt (magnitude = 1).
         let maxLinesPerSecond = Double(baseLines) * speedMultiplier
@@ -259,11 +270,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         // Are we trying to go faster than our current speed? (accelerating)
         let accelerating = abs(targetSpeed) > abs(continuousCurrentSpeed)
 
-        // Time constants for ramp-up vs ramp-down (seconds).
-        // Smaller = snappier, larger = more "heavy".
-        let tauUp: Double = 0.14   // ramp-up
-        let tauDown: Double = 0.40 // ramp-down
-
+        // Pick time constant based on whether we’re ramping up or down.
         let tau = accelerating ? tauUp : tauDown
 
         // Exponential smoothing factor based on dt and tau.
@@ -318,6 +325,17 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         lastAutoReadTime = now
 
         guard dt > 0 else { return }
+        
+        // Map user tuning (0.5x ... 2.0x) to time constants.
+        let accelFactor = max(0.5, min(2.0, HeadFlowSettings.accelerationFactor))
+        let dampingFactor = max(0.5, min(2.0, HeadFlowSettings.dampingFactor))
+
+        // Baseline time constants (seconds) for auto-read.
+        let baseTauUp: Double = 0.25
+        let baseTauDown: Double = 0.55
+
+        let tauUp = baseTauUp / accelFactor
+        let tauDown = baseTauDown / dampingFactor
 
         // For auto-read, we use a more conservative max speed so it feels
         // like a teleprompter: half of continuous' max by default.
@@ -335,17 +353,13 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             effectiveMagnitude = (magnitude - minMagnitudeForScroll) / (1.0 - minMagnitudeForScroll)
         }
 
+        // --- Acceleration vs damping for auto-read inertia ---
+
         // Target downward speed (always positive, lines/sec).
         let targetSpeed = maxLinesPerSecond * effectiveMagnitude
 
-        // --- Acceleration vs damping for auto-read inertia ---
-
+        // Acceleration vs damping for auto-read inertia.
         let accelerating = targetSpeed > autoReadCurrentSpeed
-
-        // Time constants for ramp-up vs ramp-down (seconds).
-        let tauUp: Double = 0.25
-        let tauDown: Double = 0.55
-
         let tau = accelerating ? tauUp : tauDown
         let alpha = 1.0 - exp(-dt / tau)
 

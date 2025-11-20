@@ -30,6 +30,12 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyMaxTiltDegrees)
     private var maxTiltDegrees: Double = HeadFlowSettings.defaultMaxTiltDegrees
 
+    @AppStorage(HeadFlowSettings.keyAccelerationFactor)
+    private var accelerationFactor: Double = HeadFlowSettings.defaultAccelerationFactor
+
+    @AppStorage(HeadFlowSettings.keyDampingFactor)
+    private var dampingFactor: Double = HeadFlowSettings.defaultDampingFactor
+    
     // Scroll mode (stored as raw Int)
     @AppStorage(HeadFlowSettings.keyScrollMode)
     private var scrollModeRaw: Int = HeadFlowSettings.defaultScrollModeRaw
@@ -419,7 +425,31 @@ struct PreferencesView: View {
                             Slider(value: $maxTiltDegrees, in: 10...45, step: 1)
                         }
                         
-                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Acceleration")
+                                Spacer()
+                                Text(String(format: "%.2fx", accelerationFactor))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            // 0.5x = softer ramp-in, 2.0x = snappy
+                            Slider(value: $accelerationFactor, in: 0.5...2.0, step: 0.05)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Damping")
+                                Spacer()
+                                Text(String(format: "%.2fx", dampingFactor))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            // 0.5x = long glide, 2.0x = quick stop
+                            Slider(value: $dampingFactor, in: 0.5...2.0, step: 0.05)
+                        }
                     }
                 }
 
@@ -513,6 +543,8 @@ struct PreferencesView: View {
         deadZoneDegrees = HeadFlowSettings.defaultDeadZoneDegrees
         maxTiltDegrees = HeadFlowSettings.defaultMaxTiltDegrees
         scrollModeRaw = ScrollMode.continuous.rawValue
+        accelerationFactor = HeadFlowSettings.defaultAccelerationFactor
+        dampingFactor = HeadFlowSettings.defaultDampingFactor
     }
 
     // Live response helpers
