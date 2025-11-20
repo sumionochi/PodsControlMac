@@ -6,6 +6,10 @@ struct PreferencesView: View {
     // Status from MotionEngine / AppDelegate
     @ObservedObject private var status: HeadFlowStatus
 
+    // Live telemetry for the "Live response" panel
+    @ObservedObject private var live = MotionLiveState.shared
+    @ObservedObject private var headphones = HeadphoneDeviceState.shared
+
     // Per-app profiles
     @ObservedObject private var profileManager = ProfileManager.shared
 
@@ -97,6 +101,128 @@ struct PreferencesView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                // MARK: - Live response
+                GroupBox("Live response") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        let info = liveStatusInfo()
+
+                        HStack {
+                            Text("Live response")
+                                .font(.headline)
+                            Spacer()
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(info.color)
+                                    .frame(width: 8, height: 8)
+                                Text(info.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Text("Head tilt mapped to scroll speed in real time.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        // Tilt track with dead zone and moving dot
+                        GeometryReader { geo in
+                            let width = geo.size.width
+                            let dotRadius: CGFloat = 10
+                            let halfWidth = width / 2 - dotRadius
+
+                            let clampedPercent = max(-100.0, min(100.0, live.tiltPercent))
+                            let offsetX = CGFloat(clampedPercent / 100.0) * halfWidth
+
+                            let dzFraction = max(
+                                0.0,
+                                min(1.0, maxTiltDegrees > 0
+                                    ? deadZoneDegrees / maxTiltDegrees
+                                    : 0.0)
+                            )
+                            let dzWidth = width * CGFloat(dzFraction)
+
+                            ZStack {
+                                Capsule()
+                                    .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1)
+
+                                // Dead zone band
+                                Capsule()
+                                    .fill(Color.secondary.opacity(0.15))
+                                    .frame(width: dzWidth)
+
+                                // Center line
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.4))
+                                    .frame(width: 1)
+
+                                // Current tilt dot
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: dotRadius * 2, height: dotRadius * 2)
+                                    .offset(x: offsetX)
+                                    .shadow(radius: 1)
+                                    .animation(.easeOut(duration: 0.08), value: live.tiltPercent)
+                            }
+                        }
+                        .frame(height: 44)
+
+                        // Numeric summary
+                        HStack(spacing: 12) {
+                            liveMetricBox(
+                                title: "Tilt",
+                                value: formattedTilt(live.tiltPercent),
+                                subtitle: "Tilt vs neutral"
+                            )
+                            liveMetricBox(
+                                title: "Velocity",
+                                value: formattedVelocity(live.velocityLinesPerSecond),
+                                subtitle: "Scroll speed (lines/s)"
+                            )
+                            liveMetricBox(
+                                title: "Mode",
+                                value: live.mode.displayName,
+                                subtitle: info.label
+                            )
+                        }
+
+                        // ⬇️ ADD THIS BLOCK
+                        Button("Reset global tuning to defaults") {
+                            resetGlobalTuningToDefaults()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.link)
+                        // ⬆️ ADD THIS BLOCK
+
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        // Headphone device card
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: headphoneIconName())
+                                .font(.system(size: 24))
+                                .foregroundColor(headphones.isConnected ? .accentColor : .secondary)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(headphones.deviceName ?? "No device connected")
+                                    .font(.subheadline)
+
+                                Text(headphoneStatusText())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            if let batteryText = headphoneBatterySummary() {
+                                Text(batteryText)
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
 
@@ -292,6 +418,8 @@ struct PreferencesView: View {
 
                             Slider(value: $maxTiltDegrees, in: 10...45, step: 1)
                         }
+                        
+                        
                     }
                 }
 
@@ -377,6 +505,95 @@ struct PreferencesView: View {
         formatter.timeStyle = .short
         formatter.dateStyle = .none
         return formatter.string(from: date)
+    }
+    
+    private func resetGlobalTuningToDefaults() {
+        scrollSensitivity = HeadFlowSettings.defaultScrollSensitivity
+        baseLines = HeadFlowSettings.defaultBaseLines
+        deadZoneDegrees = HeadFlowSettings.defaultDeadZoneDegrees
+        maxTiltDegrees = HeadFlowSettings.defaultMaxTiltDegrees
+        scrollModeRaw = ScrollMode.continuous.rawValue
+    }
+
+    // Live response helpers
+
+    private func liveStatusInfo() -> (label: String, color: Color) {
+        switch live.status {
+        case .idle:
+            return ("Idle", .secondary)
+        case .tracking:
+            return ("Tracking", .green)
+        case .disconnected:
+            return ("Disconnected", .red)
+        case .needsSetup:
+            return ("Needs setup", .orange)
+        }
+    }
+
+    private func formattedTilt(_ percent: Double) -> String {
+        String(format: "%.1f %%", percent)
+    }
+
+    private func formattedVelocity(_ linesPerSecond: Double) -> String {
+        String(format: "%.2f L/s", linesPerSecond)
+    }
+
+    @ViewBuilder
+    private func liveMetricBox(title: String, value: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline)
+                .monospacedDigit()
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.06))
+        )
+    }
+
+    // Headphone card helpers
+
+    private func headphoneIconName() -> String {
+        switch headphones.kind {
+        case .airPods:
+            return "airpodspro"      // SF Symbol (macOS 13+)
+        case .beats:
+            return "beats.headphones"
+        case .other, .none:
+            return "headphones"
+        }
+    }
+
+    private func headphoneStatusText() -> String {
+        if !headphones.isConnected {
+            return "Not connected"
+        }
+        return status.headphoneDescription
+    }
+
+    private func headphoneBatterySummary() -> String? {
+        let l = headphones.batteryLeft
+        let r = headphones.batteryRight
+        let c = headphones.batteryCase
+
+        if l == nil, r == nil, c == nil {
+            return nil
+        }
+
+        var parts: [String] = []
+        if let l { parts.append("L \(l)%") }
+        if let r { parts.append("R \(r)%") }
+        if let c { parts.append("Case \(c)%") }
+
+        return parts.joined(separator: "  ")
     }
 }
 

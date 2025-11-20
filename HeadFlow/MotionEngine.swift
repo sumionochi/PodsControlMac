@@ -23,6 +23,15 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
     private var lastAutoReadTime: TimeInterval?
     private var autoReadCurrentSpeed: Double = 0.0     // lines / second (downward)
     private var autoReadAccumulator: Double = 0.0
+    
+    // Tuning constants for acceleration / damping feel (seconds).
+    // Smaller = snappier, larger = more "heavy" / inertial.
+    private let baseTauContinuousUp: Double = 0.14   // ramp-up
+    private let baseTauContinuousDown: Double = 0.40 // ramp-down
+
+    private let baseTauAutoReadUp: Double = 0.25
+    private let baseTauAutoReadDown: Double = 0.55
+
 
     override init() {
         super.init()
@@ -38,6 +47,9 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         switch auth {
         case .denied, .restricted:
             print("MotionEngine: motion access denied or restricted")
+            DispatchQueue.main.async {
+                MotionLiveState.shared.status = .needsSetup
+            }
             return
         default:
             break
@@ -46,11 +58,20 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         guard manager.isDeviceMotionAvailable else {
             print("MotionEngine: device motion not available (no supported headphones?)")
             HeadFlowStatus.shared.setHeadphonesStatus(.notSupported)
+            DispatchQueue.main.async {
+                MotionLiveState.shared.status = .disconnected
+            }
             return
         }
 
         // At this point, motion is available but may not be connected yet.
         HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
+        DispatchQueue.main.async {
+            let phones = HeadphoneDeviceState.shared
+            phones.isConnected = false
+            phones.deviceName = nil
+            phones.kind = .none
+        }
 
         guard !manager.isDeviceMotionActive else {
             print("MotionEngine: device motion already active")
@@ -87,7 +108,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         return id
     }
 
-    /// Immediately stop all scrolling and reset timing.
+    /// Immediately stop all scrolling and reset timing + live state.
     private func hardStopScrolling() {
         lastContinuousTime = nil
         continuousCurrentSpeed = 0.0
@@ -96,6 +117,14 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         lastAutoReadTime = nil
         autoReadCurrentSpeed = 0.0
         autoReadAccumulator = 0.0
+
+        DispatchQueue.main.async {
+            let live = MotionLiveState.shared
+            live.velocityLinesPerSecond = 0.0
+            live.tiltPercent = 0.0
+            live.tiltDegrees = 0.0
+            live.status = .idle
+        }
     }
 
     /// Called whenever new motion data arrives (on our background queue).
@@ -175,6 +204,13 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
                 speedMultiplier: speedMultiplier
             )
         }
+
+        // After updating scroll, publish live state for the UI.
+        publishLiveState(
+            tiltDeltaDegrees: delta,
+            maxTiltDegrees: maxTiltDeg,
+            mode: mode
+        )
     }
 
     // MARK: - Continuous mode (smoothed)
@@ -218,10 +254,20 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
         let targetSpeed = maxLinesPerSecond * magnitude * direction   // lines / second
 
-        // Smooth speed changes with an exponential filter so we ease in/out.
-        // tau ≈ 0.15s → feels responsive but not jerky.
-        let responseTime: Double = 0.15
-        let alpha = 1.0 - exp(-dt / responseTime)   // 0...1
+        // --- Acceleration vs damping for "ball-like" inertia ---
+
+        // Are we trying to go faster than our current speed? (accelerating)
+        let accelerating = abs(targetSpeed) > abs(continuousCurrentSpeed)
+
+        // Time constants for ramp-up vs ramp-down (seconds).
+        // Smaller = snappier, larger = more "heavy".
+        let tauUp: Double = 0.14   // ramp-up
+        let tauDown: Double = 0.40 // ramp-down
+
+        let tau = accelerating ? tauUp : tauDown
+
+        // Exponential smoothing factor based on dt and tau.
+        let alpha = 1.0 - exp(-dt / tau)   // 0...1
 
         continuousCurrentSpeed += (targetSpeed - continuousCurrentSpeed) * alpha
 
@@ -246,6 +292,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             ScrollEngine.scrollDown(lines: -linesToScroll)
         }
     }
+
 
     // MARK: - Auto-read mode (smoothed)
 
@@ -291,9 +338,16 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         // Target downward speed (always positive, lines/sec).
         let targetSpeed = maxLinesPerSecond * effectiveMagnitude
 
-        // Smooth speed changes; slightly more relaxed than continuous.
-        let responseTime: Double = 0.25
-        let alpha = 1.0 - exp(-dt / responseTime)
+        // --- Acceleration vs damping for auto-read inertia ---
+
+        let accelerating = targetSpeed > autoReadCurrentSpeed
+
+        // Time constants for ramp-up vs ramp-down (seconds).
+        let tauUp: Double = 0.25
+        let tauDown: Double = 0.55
+
+        let tau = accelerating ? tauUp : tauDown
+        let alpha = 1.0 - exp(-dt / tau)
 
         autoReadCurrentSpeed += (targetSpeed - autoReadCurrentSpeed) * alpha
 
@@ -309,6 +363,56 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
         autoReadAccumulator -= Double(linesToScroll)
         ScrollEngine.scrollDown(lines: linesToScroll)
+    }
+
+    /// Publish live tilt / velocity / status for the Preferences UI.
+    private func publishLiveState(
+        tiltDeltaDegrees delta: Double,
+        maxTiltDegrees: Double,
+        mode: ScrollMode
+    ) {
+        // Clamp tilt to max range for display.
+        let clampedDelta = max(-maxTiltDegrees, min(maxTiltDegrees, delta))
+        let tiltPercent: Double
+        if maxTiltDegrees > 0 {
+            tiltPercent = (clampedDelta / maxTiltDegrees) * 100.0
+        } else {
+            tiltPercent = 0.0
+        }
+
+        // Velocity source depends on mode.
+        let velocityLps: Double
+        switch mode {
+        case .continuous:
+            velocityLps = continuousCurrentSpeed
+        case .autoRead:
+            // autoReadCurrentSpeed is positive for downward scroll;
+            // treat downward as negative velocity for the UI.
+            velocityLps = -autoReadCurrentSpeed
+        }
+
+        // Decide status for UI based on current app / permissions.
+        let statusModel = HeadFlowStatus.shared
+        let status: MotionLiveState.Status
+
+        if !HeadFlowSettings.isHeadScrollingEnabled {
+            status = .idle
+        } else if statusModel.accessibility != .enabled || statusModel.motionAuth != .authorized {
+            status = .needsSetup
+        } else if statusModel.headphones != .connected {
+            status = .disconnected
+        } else {
+            status = .tracking
+        }
+
+        DispatchQueue.main.async {
+            let live = MotionLiveState.shared
+            live.tiltDegrees = clampedDelta
+            live.tiltPercent = tiltPercent
+            live.velocityLinesPerSecond = velocityLps
+            live.mode = mode
+            live.status = status
+        }
     }
 
     /// Manually re-calibrate the neutral head position.
@@ -329,6 +433,15 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         HeadFlowStatus.shared.setHeadphonesStatus(.connected)
         neutralPitchDeg = nil
         hardStopScrolling()
+
+        DispatchQueue.main.async {
+            let phones = HeadphoneDeviceState.shared
+            phones.isConnected = true
+            // CMHeadphoneMotionManager doesn’t expose a name directly;
+            // we can fill this with a generic label for now.
+            phones.deviceName = "Headphones"
+            phones.kind = .other
+        }
     }
 
     func headphoneMotionManagerDidDisconnect(_ manager: CMHeadphoneMotionManager) {
@@ -336,5 +449,12 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
         neutralPitchDeg = nil
         hardStopScrolling()
+
+        DispatchQueue.main.async {
+            let phones = HeadphoneDeviceState.shared
+            phones.isConnected = false
+            phones.deviceName = nil
+            phones.kind = .none
+        }
     }
 }
