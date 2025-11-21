@@ -26,7 +26,9 @@ enum HeadFlowSettings {
     static let keyShortcutCalibrate   = "shortcutCalibrate"
 
     static let keyGlobalCalibrateShortcutEnabled = "globalCalibrateShortcutEnabled"
-
+    
+    static let keyPauseOnManualScroll       = "pauseOnManualScroll"
+    static let keyManualScrollPauseSeconds  = "manualScrollPauseSeconds"
 
     // MARK: - Defaults
 
@@ -47,6 +49,9 @@ enum HeadFlowSettings {
     static let defaultGlobalPreferencesShortcutEnabled   = true
 
     static let defaultGlobalCalibrateShortcutEnabled = true
+    
+    static let defaultPauseOnManualScroll      = true
+    static let defaultManualScrollPauseSeconds = 0.4   // 0.40s pause after manual scroll
 
     static let defaultToggleShortcut = KeyboardShortcut(
         key: "h",
@@ -88,7 +93,9 @@ enum HeadFlowSettings {
             keyGlobalToggleShortcutEnabled:        defaultGlobalToggleShortcutEnabled,
             keyGlobalCreateProfileShortcutEnabled: defaultGlobalCreateProfileShortcutEnabled,
             keyGlobalPreferencesShortcutEnabled:   defaultGlobalPreferencesShortcutEnabled,
-            keyGlobalCalibrateShortcutEnabled:   defaultGlobalCalibrateShortcutEnabled
+            keyGlobalCalibrateShortcutEnabled:   defaultGlobalCalibrateShortcutEnabled,
+            keyPauseOnManualScroll:      defaultPauseOnManualScroll,
+            keyManualScrollPauseSeconds: defaultManualScrollPauseSeconds,
         ])
     }
 
@@ -257,6 +264,26 @@ enum HeadFlowSettings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: keyGlobalCalibrateShortcutEnabled)
+        }
+    }
+    
+    static var pauseOnManualScroll: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyPauseOnManualScroll) as? Bool)
+            ?? defaultPauseOnManualScroll
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyPauseOnManualScroll)
+        }
+    }
+
+    static var manualScrollPauseSeconds: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyManualScrollPauseSeconds) as? Double)
+            ?? defaultManualScrollPauseSeconds
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyManualScrollPauseSeconds)
         }
     }
 

@@ -178,6 +178,11 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             return
         }
         
+        // Smart pause: if user recently scrolled manually, back off briefly.
+        if ManualScrollPauseController.shared.isPausedForManualScroll {
+            return
+        }
+        
         // --- Safety: Shift clutch ---
         if HeadFlowSettings.shiftToPauseEnabled,
            NSEvent.modifierFlags.contains(.shift) {

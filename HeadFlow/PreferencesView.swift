@@ -12,7 +12,7 @@ struct PreferencesView: View {
 
     // Per-app profiles
     @ObservedObject private var profileManager = ProfileManager.shared
-
+    
     // Normal settings (global)
     @AppStorage(HeadFlowSettings.keyIsHeadScrollingEnabled)
     private var isHeadScrollingEnabled: Bool = HeadFlowSettings.defaultIsHeadScrollingEnabled
@@ -60,6 +60,12 @@ struct PreferencesView: View {
     
     @AppStorage(HeadFlowSettings.keyGlobalCalibrateShortcutEnabled)
     private var globalCalibrateShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalCalibrateShortcutEnabled
+    
+    @AppStorage(HeadFlowSettings.keyPauseOnManualScroll)
+    private var pauseOnManualScroll: Bool = HeadFlowSettings.defaultPauseOnManualScroll
+
+    @AppStorage(HeadFlowSettings.keyManualScrollPauseSeconds)
+    private var manualScrollPauseSeconds: Double = HeadFlowSettings.defaultManualScrollPauseSeconds
 
     private var scrollMode: ScrollMode {
         get { ScrollMode(rawValue: scrollModeRaw) ?? .continuous }
@@ -501,6 +507,24 @@ struct PreferencesView: View {
                         Text("Use the Shift key as a clutch to pause head-based scrolling.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                        
+                        Toggle("Pause when I scroll with mouse/trackpad",
+                               isOn: $pauseOnManualScroll)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Pause duration after manual scroll")
+                                Spacer()
+                                Text(String(format: "%.2fs", manualScrollPauseSeconds))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Slider(
+                                value: $manualScrollPauseSeconds,
+                                in: 0.1...5.0,
+                            )
+                        }
                     }
                 }
                 

@@ -69,6 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         TypingActivityMonitor.shared.start()
         GlobalShortcutMonitor.shared.handler = self
         GlobalShortcutMonitor.shared.start()
+        ManualScrollMonitor.shared.start()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -177,6 +178,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
             motionEngine.stop()
         }
         GlobalShortcutMonitor.shared.stop()
+        ManualScrollMonitor.shared.stop()
     }
 
     // MARK: - Menu delegate
