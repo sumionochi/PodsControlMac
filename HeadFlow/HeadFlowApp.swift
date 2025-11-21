@@ -4,6 +4,13 @@ import CoreMotion
 import ApplicationServices
 import AppKit
 
+protocol GlobalShortcutHandler: AnyObject {
+    func handleGlobalToggleHeadFlow()
+    func handleGlobalCreateProfile()
+    func handleGlobalOpenPreferences()
+    func handleGlobalCalibrate()
+}
+
 @main
 struct HeadFlowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -36,14 +43,19 @@ class PreferencesWindowController: NSWindowController {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortcutHandler {
     var statusItem: NSStatusItem?
     var preferencesWindowController: PreferencesWindowController?
 
     // Menu items we update dynamically
     private var headScrollingMenuItem: NSMenuItem?
+    private var calibrateMenuItem: NSMenuItem?
+    private var createProfileMenuItem: NSMenuItem?
+    private var preferencesMenuItem: NSMenuItem?
+
     private var launchAtLoginMenuItem: NSMenuItem?
     private var summaryMenuItem: NSMenuItem?
+    private var headphoneStatusMenuItem: NSMenuItem?
 
     @available(macOS 14.0, *)
     private lazy var motionEngine = MotionEngine()
@@ -55,6 +67,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         HeadFlowStatus.shared.startObservingFrontmostApp()
         PointerActivityMonitor.shared.start()
         TypingActivityMonitor.shared.start()
+        GlobalShortcutMonitor.shared.handler = self
+        GlobalShortcutMonitor.shared.start()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -74,6 +88,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         summaryItem.isEnabled = false
         menu.addItem(summaryItem)
         self.summaryMenuItem = summaryItem
+        
+        // 🔹 New: Headphones status line
+        let headphoneItem = NSMenuItem(
+            title: headphoneStatusTitle(),
+            action: nil,
+            keyEquivalent: ""
+        )
+        headphoneItem.isEnabled = false
+        menu.addItem(headphoneItem)
+        self.headphoneStatusMenuItem = headphoneItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -90,21 +114,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Calibrate item
         let calibrateItem = NSMenuItem(
-            title: "Calibrate head position",
+            title: calibrateMenuTitle(),
             action: #selector(calibrateHeadPosition),
             keyEquivalent: ""
         )
         calibrateItem.target = self
         menu.addItem(calibrateItem)
+        self.calibrateMenuItem = calibrateItem
 
         // Create per-app profile for whatever app is currently frontmost
         let profileItem = NSMenuItem(
-            title: "Create profile for current app",
+            title: createProfileMenuTitle(),
             action: #selector(createProfileForCurrentApp),
-            keyEquivalent: "p" // ⌘P when menu is open (optional)
+            keyEquivalent: ""
         )
         profileItem.target = self
         menu.addItem(profileItem)
+        self.createProfileMenuItem = profileItem
 
         // --- NEW: Launch at Login submenu (A1) ---
         let launchAtLoginItem = buildLaunchAtLoginMenu()
@@ -115,12 +141,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Preferences
         let prefsItem = NSMenuItem(
-            title: "Preferences…",
+            title: preferencesMenuTitle(),
             action: #selector(openPreferences),
             keyEquivalent: ","
         )
+        prefsItem.keyEquivalentModifierMask = [.command] // keep standard ⌘,
         prefsItem.target = self
         menu.addItem(prefsItem)
+        self.preferencesMenuItem = prefsItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -148,6 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if #available(macOS 14.0, *) {
             motionEngine.stop()
         }
+        GlobalShortcutMonitor.shared.stop()
     }
 
     // MARK: - Menu delegate
@@ -155,6 +184,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Called right before the menu is shown – keep the summary fresh.
     func menuNeedsUpdate(_ menu: NSMenu) {
         summaryMenuItem?.title = HeadFlowStatus.shared.currentProfileSummary
+        headphoneStatusMenuItem?.title = headphoneStatusTitle()
+
+        // This updates Start/Stop HeadFlow title + checkmark
+        updateHeadScrollingMenuItem()
+
+        createProfileMenuItem?.title = createProfileMenuTitle()
+        calibrateMenuItem?.title = calibrateMenuTitle()
+        preferencesMenuItem?.title = preferencesMenuTitle()
     }
 
     // MARK: - Menu actions
@@ -191,6 +228,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func quit() {
         NSApp.terminate(nil)
+    }
+    
+    // MARK: - GlobalShortcutHandler
+
+    func handleGlobalToggleHeadFlow() {
+        toggleHeadScrolling()
+    }
+
+    func handleGlobalCreateProfile() {
+        createProfileForCurrentApp()
+    }
+
+    func handleGlobalOpenPreferences() {
+        openPreferences()
+    }
+    
+    func handleGlobalCalibrate() {
+        calibrateHeadPosition()
     }
 
     // MARK: - Launch at Login submenu
@@ -238,16 +293,75 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: - Helpers
-
+    
     private func headScrollingMenuTitle() -> String {
-        HeadFlowSettings.isHeadScrollingEnabled
-            ? "Head scrolling: On"
-            : "Head scrolling: Off"
+        let base = HeadFlowSettings.isHeadScrollingEnabled
+            ? "Stop HeadFlow"
+            : "Start HeadFlow"
+
+        if let label = shortcutLabel(
+            for: HeadFlowSettings.shortcutToggle,
+            enabled: HeadFlowSettings.globalToggleShortcutEnabled
+        ) {
+            return "\(base) (\(label))"
+        }
+
+        return base
+    }
+    
+    private func createProfileMenuTitle() -> String {
+        let base = "Create profile for current app"
+
+        if let label = shortcutLabel(
+            for: HeadFlowSettings.shortcutCreateProfile,
+            enabled: HeadFlowSettings.globalCreateProfileShortcutEnabled
+        ) {
+            return "\(base) (\(label))"
+        }
+
+        return base
     }
 
+    private func calibrateMenuTitle() -> String {
+        let base = "Calibrate head position"
+
+        if let label = shortcutLabel(
+            for: HeadFlowSettings.shortcutCalibrate,
+            enabled: HeadFlowSettings.globalCalibrateShortcutEnabled
+        ) {
+            return "\(base) (\(label))"
+        }
+
+        return base
+    }
+
+    private func preferencesMenuTitle() -> String {
+        let base = "Preferences…"
+
+        if let label = shortcutLabel(
+            for: HeadFlowSettings.shortcutPreferences,
+            enabled: HeadFlowSettings.globalPreferencesShortcutEnabled
+        ) {
+            return "\(base) (\(label))"
+        }
+
+        return base
+    }
+    
+    private func headphoneStatusTitle() -> String {
+        "Headphones: \(HeadFlowStatus.shared.headphoneDescription)"
+    }
+    
     private func updateHeadScrollingMenuItem() {
         guard let item = headScrollingMenuItem else { return }
         item.title = headScrollingMenuTitle()
         item.state = HeadFlowSettings.isHeadScrollingEnabled ? .on : .off
     }
+    
+    private func shortcutLabel(for shortcut: KeyboardShortcut,
+                               enabled: Bool) -> String? {
+        guard enabled, !shortcut.isEmpty else { return nil }
+        return shortcut.displayString
+    }
+
 }

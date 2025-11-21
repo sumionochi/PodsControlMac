@@ -16,6 +16,17 @@ enum HeadFlowSettings {
     static let keyPauseWhilePointerActive = "pauseWhilePointerActive"
     static let keyPauseWhileTyping        = "pauseWhileTyping"
     static let keyShiftToPauseEnabled     = "shiftToPauseEnabled"
+    static let keyGlobalToggleShortcutEnabled        = "globalToggleShortcutEnabled"
+    static let keyGlobalCreateProfileShortcutEnabled = "globalCreateProfileShortcutEnabled"
+    static let keyGlobalPreferencesShortcutEnabled   = "globalPreferencesShortcutEnabled"
+    
+    static let keyShortcutToggle      = "shortcutToggle"
+    static let keyShortcutProfile     = "shortcutCreateProfile"
+    static let keyShortcutPreferences = "shortcutPreferences"
+    static let keyShortcutCalibrate   = "shortcutCalibrate"
+
+    static let keyGlobalCalibrateShortcutEnabled = "globalCalibrateShortcutEnabled"
+
 
     // MARK: - Defaults
 
@@ -31,7 +42,31 @@ enum HeadFlowSettings {
     static let defaultPauseWhilePointerActive = true
     static let defaultPauseWhileTyping        = true
     static let defaultShiftToPauseEnabled     = true
+    static let defaultGlobalToggleShortcutEnabled        = true
+    static let defaultGlobalCreateProfileShortcutEnabled = true
+    static let defaultGlobalPreferencesShortcutEnabled   = true
 
+    static let defaultGlobalCalibrateShortcutEnabled = true
+
+    static let defaultToggleShortcut = KeyboardShortcut(
+        key: "h",
+        modifiers: [.command, .option, .control]   // ⌃⌥⌘H
+    )
+
+    static let defaultCreateProfileShortcut = KeyboardShortcut(
+        key: "j",
+        modifiers: [.command, .option, .control]   // ⌃⌥⌘J
+    )
+
+    static let defaultPreferencesShortcut = KeyboardShortcut(
+        key: ",",
+        modifiers: [.command, .option, .control]   // ⌃⌥⌘,
+    )
+
+    static let defaultCalibrateShortcut = KeyboardShortcut(
+        key: "k",
+        modifiers: [.command, .option, .control]   // ⌃⌥⌘K
+    )
 
     // MARK: - Register defaults
 
@@ -49,7 +84,11 @@ enum HeadFlowSettings {
             keyDampingFactor:          defaultDampingFactor,
             keyPauseWhilePointerActive: defaultPauseWhilePointerActive,
             keyPauseWhileTyping:        defaultPauseWhileTyping,
-            keyShiftToPauseEnabled:     defaultShiftToPauseEnabled
+            keyShiftToPauseEnabled:     defaultShiftToPauseEnabled,
+            keyGlobalToggleShortcutEnabled:        defaultGlobalToggleShortcutEnabled,
+            keyGlobalCreateProfileShortcutEnabled: defaultGlobalCreateProfileShortcutEnabled,
+            keyGlobalPreferencesShortcutEnabled:   defaultGlobalPreferencesShortcutEnabled,
+            keyGlobalCalibrateShortcutEnabled:   defaultGlobalCalibrateShortcutEnabled
         ])
     }
 
@@ -180,8 +219,84 @@ enum HeadFlowSettings {
             UserDefaults.standard.set(newValue, forKey: keyShiftToPauseEnabled)
         }
     }
+    
+    static var globalToggleShortcutEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyGlobalToggleShortcutEnabled) as? Bool)
+            ?? defaultGlobalToggleShortcutEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGlobalToggleShortcutEnabled)
+        }
+    }
+
+    static var globalCreateProfileShortcutEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyGlobalCreateProfileShortcutEnabled) as? Bool)
+            ?? defaultGlobalCreateProfileShortcutEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGlobalCreateProfileShortcutEnabled)
+        }
+    }
+
+    static var globalPreferencesShortcutEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyGlobalPreferencesShortcutEnabled) as? Bool)
+            ?? defaultGlobalPreferencesShortcutEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGlobalPreferencesShortcutEnabled)
+        }
+    }
+    
+    static var globalCalibrateShortcutEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyGlobalCalibrateShortcutEnabled) as? Bool)
+            ?? defaultGlobalCalibrateShortcutEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGlobalCalibrateShortcutEnabled)
+        }
+    }
 
     // MARK: - Helpers used by MotionEngine, etc.
+    
+    private static func loadShortcut(forKey key: String,
+                                     default defaultShortcut: KeyboardShortcut) -> KeyboardShortcut {
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: key),
+           let decoded = try? JSONDecoder().decode(KeyboardShortcut.self, from: data) {
+            return decoded
+        }
+        return defaultShortcut
+    }
+
+    private static func saveShortcut(_ shortcut: KeyboardShortcut, forKey key: String) {
+        if let data = try? JSONEncoder().encode(shortcut) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    static var shortcutToggle: KeyboardShortcut {
+        get { loadShortcut(forKey: keyShortcutToggle, default: defaultToggleShortcut) }
+        set { saveShortcut(newValue, forKey: keyShortcutToggle) }
+    }
+
+    static var shortcutCreateProfile: KeyboardShortcut {
+        get { loadShortcut(forKey: keyShortcutProfile, default: defaultCreateProfileShortcut) }
+        set { saveShortcut(newValue, forKey: keyShortcutProfile) }
+    }
+
+    static var shortcutPreferences: KeyboardShortcut {
+        get { loadShortcut(forKey: keyShortcutPreferences, default: defaultPreferencesShortcut) }
+        set { saveShortcut(newValue, forKey: keyShortcutPreferences) }
+    }
+
+    static var shortcutCalibrate: KeyboardShortcut {
+        get { loadShortcut(forKey: keyShortcutCalibrate, default: defaultCalibrateShortcut) }
+        set { saveShortcut(newValue, forKey: keyShortcutCalibrate) }
+    }
 
     /// Integer version of baseLinesValue for scroll engine.
     static func baseLines() -> Int32 {

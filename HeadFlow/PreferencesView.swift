@@ -48,6 +48,18 @@ struct PreferencesView: View {
     // Scroll mode (stored as raw Int)
     @AppStorage(HeadFlowSettings.keyScrollMode)
     private var scrollModeRaw: Int = HeadFlowSettings.defaultScrollModeRaw
+    
+    @AppStorage(HeadFlowSettings.keyGlobalToggleShortcutEnabled)
+    private var globalToggleShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalToggleShortcutEnabled
+
+    @AppStorage(HeadFlowSettings.keyGlobalCreateProfileShortcutEnabled)
+    private var globalCreateProfileShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalCreateProfileShortcutEnabled
+
+    @AppStorage(HeadFlowSettings.keyGlobalPreferencesShortcutEnabled)
+    private var globalPreferencesShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalPreferencesShortcutEnabled
+    
+    @AppStorage(HeadFlowSettings.keyGlobalCalibrateShortcutEnabled)
+    private var globalCalibrateShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalCalibrateShortcutEnabled
 
     private var scrollMode: ScrollMode {
         get { ScrollMode(rawValue: scrollModeRaw) ?? .continuous }
@@ -56,6 +68,10 @@ struct PreferencesView: View {
 
     // Local UI-only state
     @State private var lastStatusCheck: Date? = nil
+    @State private var toggleShortcut       = HeadFlowSettings.shortcutToggle
+    @State private var createProfileShortcut = HeadFlowSettings.shortcutCreateProfile
+    @State private var prefsShortcut        = HeadFlowSettings.shortcutPreferences
+    @State private var calibrateShortcut    = HeadFlowSettings.shortcutCalibrate
 
     // Preset options for max lines: 0, 5, 10, ..., 495, 500
     private let baseLinesOptions: [Double] = Array(stride(from: 0.0, through: 500.0, by: 5.0))
@@ -444,7 +460,7 @@ struct PreferencesView: View {
                             }
 
                             // 0.5x = softer ramp-in, 2.0x = snappy
-                            Slider(value: $accelerationFactor, in: 0.5...5.0, step: 0.05)
+                            Slider(value: $accelerationFactor, in: 0.5...5.0)
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
@@ -457,7 +473,7 @@ struct PreferencesView: View {
                             }
 
                             // 0.5x = long glide, 2.0x = quick stop
-                            Slider(value: $dampingFactor, in: 0.5...5.0, step: 0.05)
+                            Slider(value: $dampingFactor, in: 0.5...5.0)
                         }
                     }
                 }
@@ -485,6 +501,40 @@ struct PreferencesView: View {
                         Text("Use the Shift key as a clutch to pause head-based scrolling.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                    }
+                }
+                
+                // MARK: - Keyboard shortcuts
+                GroupBox("Keyboard shortcuts") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Toggle("Start/Stop HeadFlow", isOn: $globalToggleShortcutEnabled)
+                            Spacer()
+                            ShortcutRecorderButton(shortcut: $toggleShortcut)
+                        }
+
+                        HStack {
+                            Toggle("Create profile for current app", isOn: $globalCreateProfileShortcutEnabled)
+                            Spacer()
+                            ShortcutRecorderButton(shortcut: $createProfileShortcut)
+                        }
+
+                        HStack {
+                            Toggle("Open Preferences", isOn: $globalPreferencesShortcutEnabled)
+                            Spacer()
+                            ShortcutRecorderButton(shortcut: $prefsShortcut)
+                        }
+
+                        HStack {
+                            Toggle("Calibrate head position", isOn: $globalCalibrateShortcutEnabled)
+                            Spacer()
+                            ShortcutRecorderButton(shortcut: $calibrateShortcut)
+                        }
+
+                        Text("Click a shortcut pill, then press the desired key combination. Use Esc to clear. Shortcuts work even when other apps are frontmost.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -530,6 +580,18 @@ struct PreferencesView: View {
             if !validModes.contains(scrollModeRaw) {
                 scrollModeRaw = ScrollMode.continuous.rawValue
             }
+        }
+        .onChange(of: toggleShortcut) { _, newValue in
+            HeadFlowSettings.shortcutToggle = newValue
+        }
+        .onChange(of: createProfileShortcut) { _, newValue in
+            HeadFlowSettings.shortcutCreateProfile = newValue
+        }
+        .onChange(of: prefsShortcut) { _, newValue in
+            HeadFlowSettings.shortcutPreferences = newValue
+        }
+        .onChange(of: calibrateShortcut) { _, newValue in
+            HeadFlowSettings.shortcutCalibrate = newValue
         }
     }
 
