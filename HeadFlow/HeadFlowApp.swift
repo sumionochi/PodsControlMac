@@ -56,6 +56,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     private var launchAtLoginMenuItem: NSMenuItem?
     private var summaryMenuItem: NSMenuItem?
     private var headphoneStatusMenuItem: NSMenuItem?
+    private var deviceMenuItem: NSMenuItem?
 
     @available(macOS 14.0, *)
     private lazy var motionEngine = MotionEngine()
@@ -65,6 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         HeadFlowSettings.registerDefaults()
         HeadFlowStatus.shared.refreshAll()
         HeadFlowStatus.shared.startObservingFrontmostApp()
+        HeadFlowStatus.shared.startObservingAudioDevice()
         PointerActivityMonitor.shared.start()
         TypingActivityMonitor.shared.start()
         GlobalShortcutMonitor.shared.handler = self
@@ -90,15 +92,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         menu.addItem(summaryItem)
         self.summaryMenuItem = summaryItem
         
-        // 🔹 New: Headphones status line
-        let headphoneItem = NSMenuItem(
-            title: headphoneStatusTitle(),
+        // Device info line: "Head tracking: AirPods Pro" + icon
+        let deviceItem = NSMenuItem(
+            title: HeadFlowStatus.shared.trackingDeviceMenuSummary,
             action: nil,
             keyEquivalent: ""
         )
-        headphoneItem.isEnabled = false
-        menu.addItem(headphoneItem)
-        self.headphoneStatusMenuItem = headphoneItem
+        deviceItem.isEnabled = false
+        if #available(macOS 11.0, *) {
+            deviceItem.image = NSImage(
+                systemSymbolName: HeadFlowStatus.shared.trackingDeviceSymbolName,
+                accessibilityDescription: nil
+            )
+        }
+        menu.addItem(deviceItem)
+        self.deviceMenuItem = deviceItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -144,9 +152,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         let prefsItem = NSMenuItem(
             title: preferencesMenuTitle(),
             action: #selector(openPreferences),
-            keyEquivalent: ","
+            keyEquivalent: ""
         )
-        prefsItem.keyEquivalentModifierMask = [.command] // keep standard ⌘,
         prefsItem.target = self
         menu.addItem(prefsItem)
         self.preferencesMenuItem = prefsItem
@@ -171,6 +178,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
 
         // Ensure system login item registration matches our stored setting.
         LaunchAtLoginController.syncFromSettingsToSystem()
+        refreshMenuShortcuts()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -186,6 +194,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     /// Called right before the menu is shown – keep the summary fresh.
     func menuNeedsUpdate(_ menu: NSMenu) {
         summaryMenuItem?.title = HeadFlowStatus.shared.currentProfileSummary
+        if let deviceItem = deviceMenuItem {
+            deviceItem.title = HeadFlowStatus.shared.trackingDeviceMenuSummary
+            if #available(macOS 11.0, *) {
+                deviceItem.image = NSImage(
+                    systemSymbolName: HeadFlowStatus.shared.trackingDeviceSymbolName,
+                    accessibilityDescription: nil
+                )
+            }
+        }
         headphoneStatusMenuItem?.title = headphoneStatusTitle()
 
         // This updates Start/Stop HeadFlow title + checkmark
@@ -194,6 +211,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         createProfileMenuItem?.title = createProfileMenuTitle()
         calibrateMenuItem?.title = calibrateMenuTitle()
         preferencesMenuItem?.title = preferencesMenuTitle()
+        refreshMenuShortcuts()
     }
 
     // MARK: - Menu actions
@@ -301,38 +319,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
             ? "Stop HeadFlow"
             : "Start HeadFlow"
 
-        if let label = shortcutLabel(
-            for: HeadFlowSettings.shortcutToggle,
-            enabled: HeadFlowSettings.globalToggleShortcutEnabled
-        ) {
-            return "\(base) (\(label))"
-        }
-
         return base
     }
     
     private func createProfileMenuTitle() -> String {
         let base = "Create profile for current app"
-
-        if let label = shortcutLabel(
-            for: HeadFlowSettings.shortcutCreateProfile,
-            enabled: HeadFlowSettings.globalCreateProfileShortcutEnabled
-        ) {
-            return "\(base) (\(label))"
-        }
-
         return base
     }
 
     private func calibrateMenuTitle() -> String {
         let base = "Calibrate head position"
-
-        if let label = shortcutLabel(
-            for: HeadFlowSettings.shortcutCalibrate,
-            enabled: HeadFlowSettings.globalCalibrateShortcutEnabled
-        ) {
-            return "\(base) (\(label))"
-        }
 
         return base
     }
@@ -340,14 +336,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     private func preferencesMenuTitle() -> String {
         let base = "Preferences…"
 
-        if let label = shortcutLabel(
-            for: HeadFlowSettings.shortcutPreferences,
-            enabled: HeadFlowSettings.globalPreferencesShortcutEnabled
-        ) {
-            return "\(base) (\(label))"
+        return base
+    }
+    
+    private func applyShortcut(_ shortcut: KeyboardShortcut,
+                               enabled: Bool,
+                               to item: NSMenuItem) {
+        // If the shortcut is disabled or empty, clear the menu key equivalent.
+        guard enabled, !shortcut.isEmpty else {
+            item.keyEquivalent = ""
+            item.keyEquivalentModifierMask = []
+            return
         }
 
-        return base
+        // Key: we assume single-character like "h", "j", "," etc.
+        item.keyEquivalent = shortcut.key.lowercased()
+
+        // Modifiers: map your stored modifiers to NSEvent.ModifierFlags
+        var flags: NSEvent.ModifierFlags = []
+        if shortcut.modifiers.contains(.command) { flags.insert(.command) }
+        if shortcut.modifiers.contains(.option)  { flags.insert(.option) }
+        if shortcut.modifiers.contains(.control) { flags.insert(.control) }
+        if shortcut.modifiers.contains(.shift)   { flags.insert(.shift) }
+
+        item.keyEquivalentModifierMask = flags
+    }
+    
+    private func refreshMenuShortcuts() {
+        if let item = headScrollingMenuItem {
+            applyShortcut(
+                HeadFlowSettings.shortcutToggle,
+                enabled: HeadFlowSettings.globalToggleShortcutEnabled,
+                to: item
+            )
+        }
+
+        if let item = createProfileMenuItem {
+            applyShortcut(
+                HeadFlowSettings.shortcutCreateProfile,
+                enabled: HeadFlowSettings.globalCreateProfileShortcutEnabled,
+                to: item
+            )
+        }
+
+        if let item = calibrateMenuItem {
+            applyShortcut(
+                HeadFlowSettings.shortcutCalibrate,
+                enabled: HeadFlowSettings.globalCalibrateShortcutEnabled,
+                to: item
+            )
+        }
+
+        if let item = preferencesMenuItem {
+            applyShortcut(
+                HeadFlowSettings.shortcutPreferences,
+                enabled: HeadFlowSettings.globalPreferencesShortcutEnabled,
+                to: item
+            )
+        }
     }
     
     private func headphoneStatusTitle() -> String {

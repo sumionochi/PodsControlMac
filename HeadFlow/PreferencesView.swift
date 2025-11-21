@@ -103,6 +103,30 @@ struct PreferencesView: View {
                             Text(status.headphoneDescription)
                                 .foregroundStyle(.secondary)
                         }
+                        
+                        // Live device info row
+                        HStack(alignment: .center, spacing: 10) {
+                            Image(systemName: status.trackingDeviceSymbolName)
+                                .font(.system(size: 22, weight: .regular))
+                                .foregroundColor(status.headphones == .connected ? .accentColor : .secondary)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(status.trackingDeviceSummary)
+                                    .font(.subheadline)
+
+                                // Show raw device name in smaller grey text if we have it
+                                if !status.audioDeviceName.isEmpty &&
+                                   status.audioDeviceName != "Unknown device" {
+                                    Text(status.audioDeviceName)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.top, 4)
 
                         HStack {
                             Text("Motion permission")
