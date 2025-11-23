@@ -6,26 +6,41 @@ final class TypingActivityMonitor {
 
     static let shared = TypingActivityMonitor()
 
-    private var monitor: Any?
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
     private var lastKeyTime: CFAbsoluteTime = 0
 
     private init() {}
 
     func start() {
-        guard monitor == nil else { return }
-
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            // Optionally ignore modifier-only keys if you want:
-            if event.charactersIgnoringModifiers?.isEmpty == false {
-                self?.lastKeyTime = CFAbsoluteTimeGetCurrent()
+        // Global: typing in other apps
+        if globalMonitor == nil {
+            globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+                if event.charactersIgnoringModifiers?.isEmpty == false {
+                    self?.lastKeyTime = CFAbsoluteTimeGetCurrent()
+                }
+            }
+        }
+        
+        // Local: typing inside HeadFlow app
+        if localMonitor == nil {
+            localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+                if event.charactersIgnoringModifiers?.isEmpty == false {
+                    self?.lastKeyTime = CFAbsoluteTimeGetCurrent()
+                }
+                return event
             }
         }
     }
 
     func stop() {
-        if let monitor {
+        if let monitor = globalMonitor {
             NSEvent.removeMonitor(monitor)
-            self.monitor = nil
+            self.globalMonitor = nil
+        }
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
+            self.localMonitor = nil
         }
     }
 

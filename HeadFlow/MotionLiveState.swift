@@ -12,9 +12,10 @@ final class MotionLiveState: ObservableObject {
         case tracking      // receiving motion + scrolling enabled
         case disconnected  // no supported headphones connected
         case needsSetup    // missing Accessibility or Motion permission
-        case pausedPointer 
+        case pausedPointer
         case pausedTyping
         case pausedModifier
+        case pausedManualScroll  // paused due to manual scroll detection
     }
 
     /// Current tilt relative to neutral, in degrees (clamped to ±maxTilt).

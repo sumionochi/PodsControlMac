@@ -11,6 +11,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         case pointer
         case typing
         case modifier
+        case manualScroll
     }
 
     private let manager = CMHeadphoneMotionManager()
@@ -152,6 +153,8 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
                 live.status = .pausedTyping
             case .modifier:
                 live.status = .pausedModifier
+            case .manualScroll:
+                live.status = .pausedManualScroll
             }
             live.velocityLinesPerSecond = 0.0
         }
@@ -195,6 +198,8 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         
         // Smart pause: if user recently scrolled manually, back off briefly.
         if ManualScrollPauseController.shared.isPausedForManualScroll {
+            hardStopScrolling()
+            publishPausedStatus(.manualScroll)  // ADD THIS LINE
             return
         }
         
@@ -552,8 +557,8 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         lastGestureFireTime[gesture] = now
         GestureDispatcher.shared.handle(gesture: gesture, context: context)
     }
-    
-    /// Detect tilt left/right gestures only.
+
+    /// Detect tilt left/right gestures using ROLL (side-to-side head tilt).
     /// Runs on every motion sample, regardless of HeadFlow scrolling ON/OFF.
     private func detectGestures(motion: CMDeviceMotion, deltaPitch: Double) {
         let now = CFAbsoluteTimeGetCurrent()
@@ -564,35 +569,58 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         let tiltThreshold = max(5.0, min(90.0, HeadFlowSettings.gestureTiltThresholdDegrees))
         let gestureCooldown = max(0.1, min(5.0, HeadFlowSettings.gestureCooldownSeconds))
 
-        // Use yaw for "looking" left/right.
+        // Get roll and yaw rotation axes for robust detection.
+        let rollRad = motion.attitude.roll
         let yawRad = motion.attitude.yaw
+        
+        // Convert to degrees.
+        var rollDeg = rollRad * 180.0 / .pi
         let yawDeg = yawRad * 180.0 / .pi
+        
+        // Normalize roll to [-180, 180] range to handle wrap-around.
+        // This fixes detection at high angles (45-80 degrees).
+        if rollDeg > 180 {
+            rollDeg -= 360
+        } else if rollDeg < -180 {
+            rollDeg += 360
+        }
+        
+        // For large rotations, combine roll + yaw for more natural detection.
+        // When you rotate your head far, it's a mix of roll and yaw.
+        let combinedTiltRight = rollDeg + (yawDeg > 0 ? yawDeg * 0.3 : 0)
+        let combinedTiltLeft = rollDeg - (yawDeg < 0 ? abs(yawDeg) * 0.3 : 0)
+        
+        // Calculate hysteresis threshold (85% for smoother reset).
+        let hysteresisThreshold = tiltThreshold * 0.85
 
-        // We *keep* the detection as-is, we just changed the labels in UI.
-        // So:
-        // yawDeg <= -tiltThreshold → gesture type .tiltLeft
-        // yawDeg >= +tiltThreshold → gesture type .tiltRight
-
-        // LEFT-type gesture (UI label: “Tilt / look RIGHT”).
-        if yawDeg <= -tiltThreshold {
-            if !isTiltLeftEngaged,
-               canFireGesture(.tiltLeft, cooldown: gestureCooldown, now: now) {
-                isTiltLeftEngaged = true
-                fireGesture(.tiltLeft, context: context, now: now)
+        // Detect TILT RIGHT (head tilts toward right shoulder).
+        // Positive roll = tilting right.
+        if combinedTiltRight >= tiltThreshold {
+            if !isTiltRightEngaged {
+                // Check cooldown before firing.
+                if canFireGesture(.tiltRight, cooldown: gestureCooldown, now: now) {
+                    isTiltRightEngaged = true
+                    fireGesture(.tiltRight, context: context, now: now)
+                }
             }
-        } else {
-            isTiltLeftEngaged = false
+        } else if combinedTiltRight < hysteresisThreshold {
+            // Reset with hysteresis to avoid flickering.
+            isTiltRightEngaged = false
         }
 
-        // RIGHT-type gesture (UI label: “Tilt / look LEFT”).
-        if yawDeg >= tiltThreshold {
-            if !isTiltRightEngaged,
-               canFireGesture(.tiltRight, cooldown: gestureCooldown, now: now) {
-                isTiltRightEngaged = true
-                fireGesture(.tiltRight, context: context, now: now)
+        // Detect TILT LEFT (head tilts toward left shoulder).
+        // Negative roll = tilting left.
+        if combinedTiltLeft <= -tiltThreshold {
+            if !isTiltLeftEngaged {
+                // Check cooldown before firing.
+                if canFireGesture(.tiltLeft, cooldown: gestureCooldown, now: now) {
+                    isTiltLeftEngaged = true
+                    fireGesture(.tiltLeft, context: context, now: now)
+                }
             }
-        } else {
-            isTiltRightEngaged = false
+        } else if combinedTiltLeft > -hysteresisThreshold {
+            // Reset with hysteresis to avoid flickering.
+            isTiltLeftEngaged = false
         }
     }
 

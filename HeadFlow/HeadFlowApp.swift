@@ -43,9 +43,18 @@ class PreferencesWindowController: NSWindowController {
     }
 }
 
+// Notification fired when the Welcome / permission flow is completed.
+extension Notification.Name {
+    static let headFlowSetupCompleted = Notification.Name("HeadFlowSetupCompleted")
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortcutHandler {
     var statusItem: NSStatusItem?
     var preferencesWindowController: PreferencesWindowController?
+    var welcomeWindowController: WelcomeWindowController?
+    
+    // Flag to prevent double-starting services
+    private var servicesStarted = false
 
     // Menu items we update dynamically
     private var headScrollingMenuItem: NSMenuItem?
@@ -62,18 +71,100 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     private lazy var motionEngine = MotionEngine()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Make sure defaults exist even if user never opened Preferences.
+        // 1. Basic setup (defaults)
         HeadFlowSettings.registerDefaults()
+        
+        // 2. Build menu bar UI immediately so the app feels alive
+        setupMenu()
+        
+        // 3. Observe "setup completed" from the Welcome / permission flow
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(startServices),
+            name: .headFlowSetupCompleted,
+            object: nil
+        )
+
+        // 4. Decide whether to show Welcome or start services immediately
+        if !HeadFlowSettings.hasSeenWelcome {
+            print("HeadFlow: First run detected. Showing Welcome Window.")
+            showWelcomeWindow()
+        } else {
+            print("HeadFlow: Welcome already seen. Starting services immediately.")
+            startServices()
+        }
+        
+        // 5. Gesture-driven UI observers (Preferences / Calibrate)
+        setupNotificationObservers()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if #available(macOS 14.0, *) {
+            motionEngine.stop()
+        }
+        GlobalShortcutMonitor.shared.stop()
+        ManualScrollMonitor.shared.stop()
+    }
+    
+    // MARK: - Startup Logic
+    
+    /// Called once when we’re ready to actually run everything:
+    /// status observers, monitors, motion engine, global shortcuts, etc.
+    @objc func startServices() {
+        guard !servicesStarted else { return }
+        servicesStarted = true
+        
+        print("HeadFlow: Initializing core services...")
+
+        // Status & observers
         HeadFlowStatus.shared.refreshAll()
         HeadFlowStatus.shared.startObservingFrontmostApp()
         HeadFlowStatus.shared.startObservingAudioDevice()
+        
+        // Monitors
         PointerActivityMonitor.shared.start()
         TypingActivityMonitor.shared.start()
+        ManualScrollMonitor.shared.start()
+        
+        // Global shortcuts
         GlobalShortcutMonitor.shared.handler = self
         GlobalShortcutMonitor.shared.start()
-        ManualScrollMonitor.shared.start()
+        
+        // Login item sync
         LaunchAtLoginController.syncFromSettingsToSystem()
+        
+        // Motion engine (also shows Motion permission if not already granted)
+        if #available(macOS 14.0, *) {
+            motionEngine.start()
+        } else {
+            print("HeadFlow: Headphone motion requires macOS 14 or later.")
+        }
+        
+        // Menubar key equivalents
+        refreshMenuShortcuts()
+    }
+    
+    private func setupNotificationObservers() {
+        // These notifications are posted from GestureDispatcher (coming from MotionEngine queue),
+        // so we keep the handlers taking Notification and hop back to the main thread.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCalibrateRequested(_:)),
+            name: .headFlowCalibrateRequested,
+            object: nil
+        )
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTogglePreferencesRequested(_:)),
+            name: .headFlowTogglePreferencesRequested,
+            object: nil
+        )
+    }
+
+    // MARK: - Menu Setup
+
+    private func setupMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
@@ -83,7 +174,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         let menu = NSMenu()
         menu.delegate = self
 
-        // 🔹 Dynamic summary item (“HeadFlow is running – currently focused on …”)
+        // Summary: “HeadFlow is running – currently focused on …”
         let summaryItem = NSMenuItem(
             title: HeadFlowStatus.shared.currentProfileSummary,
             action: nil,
@@ -142,12 +233,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         menu.addItem(profileItem)
         self.createProfileMenuItem = profileItem
 
-        // --- NEW: Launch at Login submenu (A1) ---
+        // Launch at Login submenu
         let launchAtLoginItem = buildLaunchAtLoginMenu()
         menu.addItem(launchAtLoginItem)
         self.launchAtLoginMenuItem = launchAtLoginItem
         updateLaunchAtLoginMenuChecks()
-        // -----------------------------------------
+        
+        // Show welcome again (for debugging / re-viewing intro)
+        let welcomeItem = NSMenuItem(
+            title: "Show Welcome Message",
+            action: #selector(showWelcomeMessageFromMenu),
+            keyEquivalent: ""
+        )
+        welcomeItem.target = self
+        menu.addItem(welcomeItem)
 
         // Preferences
         let prefsItem = NSMenuItem(
@@ -169,40 +268,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         ))
 
         statusItem?.menu = menu
-        
-        // NEW: observe gesture-driven actions.
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleCalibrateRequested(_:)),
-            name: .headFlowCalibrateRequested,
-            object: nil
-        )
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleTogglePreferencesRequested(_:)),
-            name: .headFlowTogglePreferencesRequested,
-            object: nil
-        )
-
-        // Start motion engine
-        if #available(macOS 14.0, *) {
-            motionEngine.start()
-        } else {
-            print("HeadFlow: headphone motion requires macOS 14 or later.")
-        }
-
-        // Ensure system login item registration matches our stored setting.
-        LaunchAtLoginController.syncFromSettingsToSystem()
-        refreshMenuShortcuts()
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        if #available(macOS 14.0, *) {
-            motionEngine.stop()
-        }
-        GlobalShortcutMonitor.shared.stop()
-        ManualScrollMonitor.shared.stop()
     }
 
     // MARK: - Menu delegate
@@ -250,8 +315,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     }
 
     @objc func calibrateHeadPosition() {
-        if #available(macOS 14.0, *) {
+        // Only calibrate if services are running (motion engine exists)
+        if servicesStarted, #available(macOS 14.0, *) {
             motionEngine.calibrateNeutral()
+        } else {
+            // If user tries to calibrate before setup, maybe show welcome or just ignore
+            if !servicesStarted { showWelcomeWindow() }
         }
     }
 
@@ -268,17 +337,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     
     // MARK: - Gesture-driven notifications
 
+    /// Called when GestureDispatcher posts `.headFlowCalibrateRequested`.
     @objc private func handleCalibrateRequested(_ notification: Notification) {
         DispatchQueue.main.async { [weak self] in
             self?.calibrateHeadPosition()
         }
     }
 
+    /// Called when GestureDispatcher posts `.headFlowTogglePreferencesRequested`.
     @objc private func handleTogglePreferencesRequested(_ notification: Notification) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.openPreferences()
+            self?.openPreferences()
         }
+    }
+    
+    @objc func openPreferencesFromWelcome(_ sender: Any?) {
+        openPreferences()
+        closeWelcomeWindow()
+    }
+
+    @objc func closeWelcomeFromView(_ sender: Any?) {
+        closeWelcomeWindow()
+    }
+
+    @objc func showWelcomeMessageFromMenu() {
+        showWelcomeWindow()
     }
     
     // MARK: - GlobalShortcutHandler
@@ -297,6 +380,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     
     func handleGlobalCalibrate() {
         calibrateHeadPosition()
+    }
+    
+    // MARK: - Welcome window
+
+    func showWelcomeWindow() {
+        if welcomeWindowController == nil {
+            welcomeWindowController = WelcomeWindowController()
+        }
+        welcomeWindowController?.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func closeWelcomeWindow() {
+        welcomeWindowController?.close()
+        welcomeWindowController = nil
     }
 
     // MARK: - Launch at Login submenu
@@ -346,28 +444,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     // MARK: - Helpers
     
     private func headScrollingMenuTitle() -> String {
-        let base = HeadFlowSettings.isHeadScrollingEnabled
+        HeadFlowSettings.isHeadScrollingEnabled
             ? "Stop HeadFlow"
             : "Start HeadFlow"
-
-        return base
     }
     
     private func createProfileMenuTitle() -> String {
-        let base = "Create profile for current app"
-        return base
+        "Create profile for current app"
     }
 
     private func calibrateMenuTitle() -> String {
-        let base = "Calibrate head position"
-
-        return base
+        "Calibrate head position"
     }
 
     private func preferencesMenuTitle() -> String {
-        let base = "Preferences…"
-
-        return base
+        "Preferences…"
     }
     
     private func applyShortcut(_ shortcut: KeyboardShortcut,
@@ -442,5 +533,4 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         guard enabled, !shortcut.isEmpty else { return nil }
         return shortcut.displayString
     }
-
 }

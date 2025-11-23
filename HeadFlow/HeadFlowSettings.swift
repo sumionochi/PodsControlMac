@@ -33,7 +33,8 @@ enum HeadFlowSettings {
     static let keyGestureSettings        = "gestureSettings"
     static let keyGestureTiltThresholdDegrees = "gestureTiltThresholdDegrees"
     static let keyGestureCooldownSeconds      = "gestureCooldownSeconds"
-
+    static let keyHasSeenWelcome      = "hasSeenWelcome"
+    
     // MARK: - Defaults
 
     static let defaultIsHeadScrollingEnabled = true
@@ -54,7 +55,7 @@ enum HeadFlowSettings {
     static let defaultGestureTiltThresholdDegrees = 20.0   // degrees from neutral
     static let defaultGestureCooldownSeconds      = 0.6
     static let defaultGlobalCalibrateShortcutEnabled = true
-    
+    static let defaultHasSeenWelcome  = false
     static let defaultPauseOnManualScroll      = true
     static let defaultManualScrollPauseSeconds = 0.4   // 0.40s pause after manual scroll
 
@@ -104,6 +105,7 @@ enum HeadFlowSettings {
             keyGestureSettings:          Data(),
             keyGestureTiltThresholdDegrees: defaultGestureTiltThresholdDegrees,
             keyGestureCooldownSeconds:      defaultGestureCooldownSeconds,
+            keyHasSeenWelcome:      defaultHasSeenWelcome,
         ])
     }
 
@@ -182,6 +184,16 @@ enum HeadFlowSettings {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: keyLaunchAtLoginMode)
+        }
+    }
+    
+    static var hasSeenWelcome: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyHasSeenWelcome) as? Bool)
+            ?? defaultHasSeenWelcome
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyHasSeenWelcome)
         }
     }
 

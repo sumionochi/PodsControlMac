@@ -32,7 +32,7 @@ enum HeadFlowActionKind: String, Codable, CaseIterable, Identifiable, Hashable {
     var displayName: String {
         switch self {
         case .togglePerAppProfile:    return "Toggle per-app profile for current app"
-        case .showHidePreferences:    return "Show / hide Preferences"
+        case .showHidePreferences:    return "Show Preferences"
         case .recalibrateNeutral:     return "Recalibrate neutral head position"
         case .toggleHeadFlowScrolling:return "Start / Stop HeadFlow scrolling"
 
