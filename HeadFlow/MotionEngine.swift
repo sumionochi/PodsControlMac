@@ -30,6 +30,15 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
     private var autoReadCurrentSpeed: Double = 0.0     // lines / second (downward)
     private var autoReadAccumulator: Double = 0.0
     
+    // MARK: - Gesture detection state
+
+   /// Last time each gesture fired, for per-gesture cooldown.
+    private var lastGestureFireTime: [GestureType: CFAbsoluteTime] = [:]
+
+   /// Simple edge-detection so we only fire once when crossing thresholds.
+    private var isTiltLeftEngaged = false
+    private var isTiltRightEngaged = false
+    
     // Tuning constants for acceleration / damping feel (seconds).
     // Smaller = snappier, larger = more "heavy" / inertial.
     private let baseTauContinuousUp: Double = 0.14   // ramp-up
@@ -161,6 +170,12 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             print("MotionEngine: auto-calibrated neutral pitch = \(pitchDeg)")
             return
         }
+        
+        guard let neutral = neutralPitchDeg else { return }
+        let delta = pitchDeg - neutral
+
+        // 🔹 Always run gesture detection, even when HeadFlow scrolling is OFF.
+        detectGestures(motion: motion, deltaPitch: delta)
 
         // Global ON/OFF must be respected first.
         guard HeadFlowSettings.isHeadScrollingEnabled else {
@@ -213,13 +228,9 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         let baseLines   = max(Int32(0), min(Int32(500), config.baseLines)) // safety clamp
         let sensitivity = max(0.0, min(100.0, config.scrollSensitivity))   // 0–100
         let mode        = config.scrollMode
-
-        // How far from neutral are we?
-        guard let neutral = neutralPitchDeg else { return }
-        let delta = pitchDeg - neutral
-
-        // Map tilt to [-1, 1] and magnitude to [0, 1], but treat dead zone
-        // as "no tilt" (factor = 0, magnitude = 0) so smoothing can ease to 0.
+        
+        // Map tilt to [-1, 1] and magnitude to [0, 1].
+        // Inside the dead zone we just let smoothing ease us to 0 — no hard reset.
         var factor: Double = 0.0     // -1...1, sign gives direction (up/down)
         var magnitude: Double = 0.0  // 0...1, how strong the tilt is
 
@@ -521,4 +532,68 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             phones.kind = .none
         }
     }
+    
+    // MARK: - Gesture detection helpers
+
+    /// Returns true if this gesture can fire (cooldown passed).
+    private func canFireGesture(_ gesture: GestureType,
+                                cooldown: TimeInterval,
+                                now: CFAbsoluteTime) -> Bool {
+        if let last = lastGestureFireTime[gesture], now - last < cooldown {
+            return false
+        }
+        return true
+    }
+
+    /// Record fire time and send gesture to the dispatcher.
+    private func fireGesture(_ gesture: GestureType,
+                             context: GestureContext,
+                             now: CFAbsoluteTime) {
+        lastGestureFireTime[gesture] = now
+        GestureDispatcher.shared.handle(gesture: gesture, context: context)
+    }
+    
+    /// Detect tilt left/right gestures only.
+    /// Runs on every motion sample, regardless of HeadFlow scrolling ON/OFF.
+    private func detectGestures(motion: CMDeviceMotion, deltaPitch: Double) {
+        let now = CFAbsoluteTimeGetCurrent()
+        let context: GestureContext = HeadFlowSettings.isHeadScrollingEnabled ? .headFlowOn : .headFlowOff
+
+        // User-tunable thresholds.
+        // Clamp to reasonable ranges so bad values don't break detection.
+        let tiltThreshold = max(5.0, min(90.0, HeadFlowSettings.gestureTiltThresholdDegrees))
+        let gestureCooldown = max(0.1, min(5.0, HeadFlowSettings.gestureCooldownSeconds))
+
+        // Use yaw for "looking" left/right.
+        let yawRad = motion.attitude.yaw
+        let yawDeg = yawRad * 180.0 / .pi
+
+        // We *keep* the detection as-is, we just changed the labels in UI.
+        // So:
+        // yawDeg <= -tiltThreshold → gesture type .tiltLeft
+        // yawDeg >= +tiltThreshold → gesture type .tiltRight
+
+        // LEFT-type gesture (UI label: “Tilt / look RIGHT”).
+        if yawDeg <= -tiltThreshold {
+            if !isTiltLeftEngaged,
+               canFireGesture(.tiltLeft, cooldown: gestureCooldown, now: now) {
+                isTiltLeftEngaged = true
+                fireGesture(.tiltLeft, context: context, now: now)
+            }
+        } else {
+            isTiltLeftEngaged = false
+        }
+
+        // RIGHT-type gesture (UI label: “Tilt / look LEFT”).
+        if yawDeg >= tiltThreshold {
+            if !isTiltRightEngaged,
+               canFireGesture(.tiltRight, cooldown: gestureCooldown, now: now) {
+                isTiltRightEngaged = true
+                fireGesture(.tiltRight, context: context, now: now)
+            }
+        } else {
+            isTiltRightEngaged = false
+        }
+    }
+
 }

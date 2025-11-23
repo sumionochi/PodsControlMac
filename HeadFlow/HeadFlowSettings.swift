@@ -29,6 +29,10 @@ enum HeadFlowSettings {
     
     static let keyPauseOnManualScroll       = "pauseOnManualScroll"
     static let keyManualScrollPauseSeconds  = "manualScrollPauseSeconds"
+    
+    static let keyGestureSettings        = "gestureSettings"
+    static let keyGestureTiltThresholdDegrees = "gestureTiltThresholdDegrees"
+    static let keyGestureCooldownSeconds      = "gestureCooldownSeconds"
 
     // MARK: - Defaults
 
@@ -47,7 +51,8 @@ enum HeadFlowSettings {
     static let defaultGlobalToggleShortcutEnabled        = true
     static let defaultGlobalCreateProfileShortcutEnabled = true
     static let defaultGlobalPreferencesShortcutEnabled   = true
-
+    static let defaultGestureTiltThresholdDegrees = 20.0   // degrees from neutral
+    static let defaultGestureCooldownSeconds      = 0.6
     static let defaultGlobalCalibrateShortcutEnabled = true
     
     static let defaultPauseOnManualScroll      = true
@@ -78,24 +83,27 @@ enum HeadFlowSettings {
     /// Ensure reasonable defaults exist even if user never opened Preferences.
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
-            keyIsHeadScrollingEnabled: defaultIsHeadScrollingEnabled,
-            keyScrollSensitivity:      defaultScrollSensitivity,
-            keyBaseLines:              defaultBaseLines,
-            keyDeadZoneDegrees:        defaultDeadZoneDegrees,
-            keyMaxTiltDegrees:         defaultMaxTiltDegrees,
-            keyScrollMode:             defaultScrollModeRaw,
-            keyLaunchAtLoginMode:      defaultLaunchAtLoginModeRaw,
-            keyAccelerationFactor:     defaultAccelerationFactor,
-            keyDampingFactor:          defaultDampingFactor,
+            keyIsHeadScrollingEnabled:  defaultIsHeadScrollingEnabled,
+            keyScrollSensitivity:       defaultScrollSensitivity,
+            keyBaseLines:               defaultBaseLines,
+            keyDeadZoneDegrees:         defaultDeadZoneDegrees,
+            keyMaxTiltDegrees:          defaultMaxTiltDegrees,
+            keyScrollMode:              defaultScrollModeRaw,
+            keyLaunchAtLoginMode:       defaultLaunchAtLoginModeRaw,
+            keyAccelerationFactor:      defaultAccelerationFactor,
+            keyDampingFactor:           defaultDampingFactor,
             keyPauseWhilePointerActive: defaultPauseWhilePointerActive,
             keyPauseWhileTyping:        defaultPauseWhileTyping,
             keyShiftToPauseEnabled:     defaultShiftToPauseEnabled,
             keyGlobalToggleShortcutEnabled:        defaultGlobalToggleShortcutEnabled,
             keyGlobalCreateProfileShortcutEnabled: defaultGlobalCreateProfileShortcutEnabled,
             keyGlobalPreferencesShortcutEnabled:   defaultGlobalPreferencesShortcutEnabled,
-            keyGlobalCalibrateShortcutEnabled:   defaultGlobalCalibrateShortcutEnabled,
+            keyGlobalCalibrateShortcutEnabled:     defaultGlobalCalibrateShortcutEnabled,
             keyPauseOnManualScroll:      defaultPauseOnManualScroll,
             keyManualScrollPauseSeconds: defaultManualScrollPauseSeconds,
+            keyGestureSettings:          Data(),
+            keyGestureTiltThresholdDegrees: defaultGestureTiltThresholdDegrees,
+            keyGestureCooldownSeconds:      defaultGestureCooldownSeconds,
         ])
     }
 
@@ -197,6 +205,27 @@ enum HeadFlowSettings {
         }
     }
     
+    static var gestureTiltThresholdDegrees: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyGestureTiltThresholdDegrees) as? Double)
+            ?? defaultGestureTiltThresholdDegrees
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGestureTiltThresholdDegrees)
+        }
+    }
+
+    static var gestureCooldownSeconds: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyGestureCooldownSeconds) as? Double)
+            ?? defaultGestureCooldownSeconds
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGestureCooldownSeconds)
+        }
+    }
+
+    
     static var pauseWhilePointerActive: Bool {
         get {
             (UserDefaults.standard.object(forKey: keyPauseWhilePointerActive) as? Bool)
@@ -285,6 +314,62 @@ enum HeadFlowSettings {
         set {
             UserDefaults.standard.set(newValue, forKey: keyManualScrollPauseSeconds)
         }
+    }
+    
+    // MARK: - Gesture settings (mappings + custom shortcut bank)
+
+    static var gestureSettings: GestureSettings {
+        get {
+            let defaults = UserDefaults.standard
+            guard let data = defaults.data(forKey: keyGestureSettings),
+                  !data.isEmpty else {
+                // If nothing stored yet, return a sensible default config.
+                return defaultGestureSettings()
+            }
+
+            do {
+                let decoded = try JSONDecoder().decode(GestureSettings.self, from: data)
+                return decoded
+            } catch {
+                print("HeadFlowSettings: failed to decode GestureSettings: \(error)")
+                return defaultGestureSettings()
+            }
+        }
+        set {
+            let defaults = UserDefaults.standard
+            do {
+                let data = try JSONEncoder().encode(newValue)
+                defaults.set(data, forKey: keyGestureSettings)
+            } catch {
+                print("HeadFlowSettings: failed to encode GestureSettings: \(error)")
+            }
+        }
+    }
+
+    /// Provide initial mappings & an empty custom shortcut bank.
+    private static func defaultGestureSettings() -> GestureSettings {
+        // By default, no gestures do anything until user configures them.
+        var mappings: [GestureMapping] = []
+
+        // HeadFlow ON: 3 gestures
+        for gesture in [GestureType.tiltLeft, .tiltRight, .shake] {
+            mappings.append(GestureMapping(
+                context: .headFlowOn,
+                gesture: gesture,
+                action: .none
+            ))
+        }
+
+        // HeadFlow OFF: 5 gestures
+        for gesture in GestureType.allCases {
+            mappings.append(GestureMapping(
+                context: .headFlowOff,
+                gesture: gesture,
+                action: .none
+            ))
+        }
+
+        return GestureSettings(mappings: mappings, customShortcuts: [])
     }
 
     // MARK: - Helpers used by MotionEngine, etc.

@@ -72,6 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         GlobalShortcutMonitor.shared.handler = self
         GlobalShortcutMonitor.shared.start()
         ManualScrollMonitor.shared.start()
+        LaunchAtLoginController.syncFromSettingsToSystem()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -168,6 +169,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         ))
 
         statusItem?.menu = menu
+        
+        // NEW: observe gesture-driven actions.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCalibrateRequested(_:)),
+            name: .headFlowCalibrateRequested,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTogglePreferencesRequested(_:)),
+            name: .headFlowTogglePreferencesRequested,
+            object: nil
+        )
 
         // Start motion engine
         if #available(macOS 14.0, *) {
@@ -248,6 +264,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
 
     @objc func quit() {
         NSApp.terminate(nil)
+    }
+    
+    // MARK: - Gesture-driven notifications
+
+    @objc private func handleCalibrateRequested(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.calibrateHeadPosition()
+        }
+    }
+
+    @objc private func handleTogglePreferencesRequested(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.openPreferences()
+        }
     }
     
     // MARK: - GlobalShortcutHandler

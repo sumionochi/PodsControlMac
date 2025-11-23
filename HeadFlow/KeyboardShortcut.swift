@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 /// Simple representation of a 1-key shortcut (e.g. ⇧⌘H).
-struct KeyboardShortcut: Codable, Equatable {
+struct KeyboardShortcut: Codable, Equatable, Hashable {
     /// lowercased charactersIgnoringModifiers (single char)
     var key: String
     /// NSEvent.ModifierFlags.rawValue for ⌘ ⇧ ⌥ ^ etc.

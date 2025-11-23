@@ -14,6 +14,12 @@ struct PreferencesView: View {
     @ObservedObject private var profileManager = ProfileManager.shared
     
     // Normal settings (global)
+    @AppStorage(HeadFlowSettings.keyGestureTiltThresholdDegrees)
+    private var gestureTiltThresholdDegrees: Double = HeadFlowSettings.defaultGestureTiltThresholdDegrees
+
+    @AppStorage(HeadFlowSettings.keyGestureCooldownSeconds)
+    private var gestureCooldownSeconds: Double = HeadFlowSettings.defaultGestureCooldownSeconds
+
     @AppStorage(HeadFlowSettings.keyIsHeadScrollingEnabled)
     private var isHeadScrollingEnabled: Bool = HeadFlowSettings.defaultIsHeadScrollingEnabled
 
@@ -74,6 +80,7 @@ struct PreferencesView: View {
 
     // Local UI-only state
     @State private var lastStatusCheck: Date? = nil
+    @State private var gestureSettings: GestureSettings = HeadFlowSettings.gestureSettings
     @State private var toggleShortcut       = HeadFlowSettings.shortcutToggle
     @State private var createProfileShortcut = HeadFlowSettings.shortcutCreateProfile
     @State private var prefsShortcut        = HeadFlowSettings.shortcutPreferences
@@ -348,6 +355,106 @@ struct PreferencesView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                
+                // MARK: - Gestures & quick actions
+                GroupBox("Gestures & quick actions") {
+                    VStack(alignment: .leading, spacing: 12) {
+
+                        Text("Assign quick actions to head gestures. Some gestures are only available when HeadFlow scrolling is off.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        // HeadFlow ON
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("When HeadFlow scrolling is ON")
+                                .font(.subheadline)
+                                .bold()
+
+                            gestureRow(
+                                title: "Tilt / look right",
+                                context: .headFlowOn,
+                                gesture: .tiltLeft
+                            )
+
+                            gestureRow(
+                                title: "Tilt / look left",
+                                context: .headFlowOn,
+                                gesture: .tiltRight
+                            )
+                        }
+                        .padding(.top, 4)
+
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        // HeadFlow OFF
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("When HeadFlow scrolling is OFF")
+                                .font(.subheadline)
+                                .bold()
+
+                            gestureRow(
+                                title: "Tilt / look right",
+                                context: .headFlowOff,
+                                gesture: .tiltLeft
+                            )
+
+                            gestureRow(
+                                title: "Tilt / look left",
+                                context: .headFlowOff,
+                                gesture: .tiltRight
+                            )
+                        }
+                    }
+                }
+                
+                // MARK: - Custom shortcuts bank
+                GroupBox("Custom shortcuts bank") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Define your own shortcuts (like “New tab in browser – ⌘T”) and reuse them in the gesture actions above.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if gestureSettings.customShortcuts.isEmpty {
+                            Text("No custom shortcuts yet. Click “Add custom shortcut” to create one.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 4)
+                        } else {
+                            ForEach(gestureSettings.customShortcuts) { custom in
+                                HStack(spacing: 8) {
+                                    TextField("Shortcut name", text: bindingForCustomShortcutName(custom))
+                                        .textFieldStyle(.roundedBorder)
+
+                                    Spacer(minLength: 8)
+
+                                    ShortcutRecorderField(
+                                        shortcut: bindingForCustomShortcutValue(custom)
+                                    )
+                                    .frame(width: 140)
+
+                                    Button(role: .destructive) {
+                                        removeCustomShortcut(custom)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Remove this custom shortcut")
+                                }
+                            }
+                        }
+
+                        Button {
+                            addCustomShortcut()
+                        } label: {
+                            Label("Add custom shortcut", systemImage: "plus")
+                        }
+                        .buttonStyle(.link)
+                        .padding(.top, 4)
+                    }
+                }
 
                 // MARK: - Per-app behavior
                 GroupBox("Per-app behavior") {
@@ -508,6 +615,53 @@ struct PreferencesView: View {
                     }
                 }
                 
+                // MARK: - Gesture triggers
+                GroupBox("Gestures & quick actions") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("These settings control how hard you need to tilt your head to trigger a gesture and how often gestures can repeat.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        // Tilt threshold
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Tilt needed to trigger gesture")
+                                Spacer()
+                                Text(String(format: "%.0f°", gestureTiltThresholdDegrees))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Slider(
+                                value: $gestureTiltThresholdDegrees,
+                                in: 10...80,
+                            )
+                        }
+
+                        // Cooldown
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Gesture cooldown")
+                                Spacer()
+                                Text(String(format: "%.1fs", gestureCooldownSeconds))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Slider(
+                                value: $gestureCooldownSeconds,
+                                in: 0.2...10.0,
+                            )
+                        }
+
+                        Text("Applies to Tilt / look left and Tilt / look right in both HeadFlow OFF and ON gesture banks.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                
                 // MARK: - Safety
                 GroupBox("Safety") {
                     VStack(alignment: .leading, spacing: 10) {
@@ -628,6 +782,7 @@ struct PreferencesView: View {
             if !validModes.contains(scrollModeRaw) {
                 scrollModeRaw = ScrollMode.continuous.rawValue
             }
+            gestureSettings = HeadFlowSettings.gestureSettings
         }
         .onChange(of: toggleShortcut) { _, newValue in
             HeadFlowSettings.shortcutToggle = newValue
@@ -673,6 +828,154 @@ struct PreferencesView: View {
             return value
         }
         return nearest
+    }
+    
+    // MARK: - Gesture helpers
+
+    /// Returns a binding to the GestureAction for a given (context, gesture) pair.
+    private func bindingForGesture(
+        context: GestureContext,
+        gesture: GestureType
+    ) -> Binding<GestureAction> {
+        Binding<GestureAction>(
+            get: {
+                // Find existing mapping, or fall back to .none
+                if let index = gestureSettings.mappings.firstIndex(where: {
+                    $0.context == context && $0.gesture == gesture
+                }) {
+                    return gestureSettings.mappings[index].action
+                } else {
+                    return .none
+                }
+            },
+            set: { newValue in
+                var settings = gestureSettings
+
+                if let index = settings.mappings.firstIndex(where: {
+                    $0.context == context && $0.gesture == gesture
+                }) {
+                    settings.mappings[index].action = newValue
+                } else {
+                    // If somehow missing, append new mapping.
+                    let mapping = GestureMapping(
+                        context: context,
+                        gesture: gesture,
+                        action: newValue
+                    )
+                    settings.mappings.append(mapping)
+                }
+
+                // Update local state + persist to HeadFlowSettings.
+                gestureSettings = settings
+                HeadFlowSettings.gestureSettings = settings
+            }
+        )
+    }
+
+    /// One row: label + Picker to choose the action for a gesture.
+    @ViewBuilder
+    private func gestureRow(
+        title: String,
+        context: GestureContext,
+        gesture: GestureType
+    ) -> some View {
+        let selection = bindingForGesture(context: context, gesture: gesture)
+
+        HStack {
+            Text(title)
+            Spacer()
+            Picker(title, selection: selection) {
+                // None
+                Text("None")
+                    .tag(GestureAction.none)
+
+                // HeadFlow actions
+                ForEach(HeadFlowActionKind.allCases) { kind in
+                    Text("HeadFlow – \(kind.displayName)")
+                        .tag(GestureAction.headFlow(kind))
+                }
+
+                // Standard macOS shortcuts
+                ForEach(StandardShortcutKind.allCases) { kind in
+                    Text("macOS – \(kind.displayName)")
+                        .tag(GestureAction.standardShortcut(kind))
+                }
+
+                // Custom shortcuts from user bank
+                ForEach(gestureSettings.customShortcuts) { custom in
+                    Text("Custom – \(custom.name) (\(custom.shortcut.displayString))")
+                        .tag(GestureAction.customShortcut(custom.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 260)
+        }
+    }
+    
+    // MARK: - Custom shortcut helpers
+
+    private func bindingForCustomShortcutName(_ custom: CustomShortcut) -> Binding<String> {
+        Binding<String>(
+            get: {
+                gestureSettings.customShortcuts.first(where: { $0.id == custom.id })?.name
+                ?? custom.name
+            },
+            set: { newValue in
+                var settings = gestureSettings
+                if let index = settings.customShortcuts.firstIndex(where: { $0.id == custom.id }) {
+                    settings.customShortcuts[index].name = newValue
+                    gestureSettings = settings
+                    HeadFlowSettings.gestureSettings = settings
+                }
+            }
+        )
+    }
+
+    private func bindingForCustomShortcutValue(_ custom: CustomShortcut) -> Binding<KeyboardShortcut> {
+        Binding<KeyboardShortcut>(
+            get: {
+                gestureSettings.customShortcuts.first(where: { $0.id == custom.id })?.shortcut
+                ?? custom.shortcut
+            },
+            set: { newShortcut in
+                var settings = gestureSettings
+                if let index = settings.customShortcuts.firstIndex(where: { $0.id == custom.id }) {
+                    settings.customShortcuts[index].shortcut = newShortcut
+                    gestureSettings = settings
+                    HeadFlowSettings.gestureSettings = settings
+                }
+            }
+        )
+    }
+
+    private func addCustomShortcut() {
+        var settings = gestureSettings
+        let new = CustomShortcut(
+            id: UUID(),
+            name: "My shortcut",
+            shortcut: .none
+        )
+        settings.customShortcuts.append(new)
+        gestureSettings = settings
+        HeadFlowSettings.gestureSettings = settings
+    }
+
+    private func removeCustomShortcut(_ custom: CustomShortcut) {
+        var settings = gestureSettings
+
+        // Remove the shortcut from the bank.
+        settings.customShortcuts.removeAll { $0.id == custom.id }
+
+        // Clear any gesture mappings that referenced this custom shortcut.
+        for index in settings.mappings.indices {
+            if case .customShortcut(let id) = settings.mappings[index].action,
+               id == custom.id {
+                settings.mappings[index].action = .none
+            }
+        }
+
+        gestureSettings = settings
+        HeadFlowSettings.gestureSettings = settings
     }
 
     private func formattedTime(_ date: Date) -> String {
@@ -777,6 +1080,97 @@ struct PreferencesView: View {
         if let c { parts.append("Case \(c)%") }
 
         return parts.joined(separator: "  ")
+    }
+}
+
+// MARK: - Inline shortcut recorder for custom shortcuts
+
+/// Simple "press keys" recorder that writes into a KeyboardShortcut binding.
+struct ShortcutRecorderField: NSViewRepresentable {
+
+    @Binding var shortcut: KeyboardShortcut
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(shortcut: $shortcut)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(
+            title: shortcut.displayString,
+            target: context.coordinator,
+            action: #selector(Coordinator.didClickButton(_:))
+        )
+        button.bezelStyle = .rounded
+        button.setButtonType(.momentaryPushIn)
+        button.font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        return button
+    }
+
+    func updateNSView(_ nsView: NSButton, context: Context) {
+        // When not recording, keep label in sync with current shortcut.
+        if !context.coordinator.isRecording {
+            nsView.title = shortcut.displayString
+        }
+    }
+
+    final class Coordinator: NSObject {
+        @Binding var shortcut: KeyboardShortcut
+
+        var isRecording = false
+        weak var button: NSButton?
+        var monitor: Any?
+
+        init(shortcut: Binding<KeyboardShortcut>) {
+            self._shortcut = shortcut
+        }
+
+        @objc func didClickButton(_ sender: NSButton) {
+            button = sender
+            sender.title = "Press keys…"
+            isRecording = true
+
+            // Remove old monitor if any.
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self = self else { return event }
+
+                let chars = event.charactersIgnoringModifiers ?? ""
+                guard let first = chars.first else {
+                    self.stopRecording()
+                    return nil
+                }
+
+                let keyString = String(first)
+                let filteredModifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+
+                DispatchQueue.main.async {
+                    self.shortcut = KeyboardShortcut(key: keyString, modifiers: filteredModifiers)
+                    self.button?.title = self.shortcut.displayString
+                }
+
+                self.stopRecording()
+                // Swallow this event so it doesn't type into fields.
+                return nil
+            }
+        }
+
+        private func stopRecording() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+            isRecording = false
+
+            DispatchQueue.main.async { [weak self] in
+                if let self = self {
+                    self.button?.title = self.shortcut.displayString
+                }
+            }
+        }
     }
 }
 

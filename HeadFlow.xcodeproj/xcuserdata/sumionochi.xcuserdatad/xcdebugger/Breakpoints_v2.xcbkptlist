@@ -7,17 +7,17 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "7034D56F-B7AB-4359-9D9B-0E26DA27C1D7"
+            uuid = "0B1D7F77-C03F-4F48-A544-9A3AFEB0B31F"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "HeadFlow/HeadFlowApp.swift"
+            filePath = "HeadFlow/MotionEngine.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "184"
-            endingLineNumber = "184"
-            landmarkName = "AppDelegate"
-            landmarkType = "3">
+            startingLineNumber = "161"
+            endingLineNumber = "161"
+            landmarkName = "handle(motion:)"
+            landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>
