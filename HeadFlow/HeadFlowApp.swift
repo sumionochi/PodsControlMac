@@ -9,6 +9,7 @@ protocol GlobalShortcutHandler: AnyObject {
     func handleGlobalCreateProfile()
     func handleGlobalOpenPreferences()
     func handleGlobalCalibrate()
+    func handleGlobalCycleModes() // <--- NEW
 }
 
 @main
@@ -61,7 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     private var calibrateMenuItem: NSMenuItem?
     private var createProfileMenuItem: NSMenuItem?
     private var preferencesMenuItem: NSMenuItem?
-
+    private var cycleModeMenuItem: NSMenuItem? // <--- Optional menu item
     private var launchAtLoginMenuItem: NSMenuItem?
     private var summaryMenuItem: NSMenuItem?
     private var headphoneStatusMenuItem: NSMenuItem?
@@ -200,6 +201,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         menu.addItem(deviceItem)
         self.deviceMenuItem = deviceItem
 
+        // Add Cycle Mode to Menu (Optional but good for visibility)
+
+        let cycleItem = NSMenuItem(
+            title: "Scroll Mode: \(HeadFlowSettings.scrollMode.displayName)",
+            action: #selector(cycleScrollMode),
+            keyEquivalent: ""
+        )
+        cycleItem.target = self
+        menu.addItem(cycleItem)
+        self.cycleModeMenuItem = cycleItem
+        
         menu.addItem(NSMenuItem.separator())
 
         // Head scrolling toggle item
@@ -285,10 +297,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
             }
         }
         headphoneStatusMenuItem?.title = headphoneStatusTitle()
+        
+        // ✅ ADD THIS LINE
+        cycleModeMenuItem?.title = "Scroll Mode: \(HeadFlowSettings.scrollMode.displayName)"
 
-        // This updates Start/Stop HeadFlow title + checkmark
         updateHeadScrollingMenuItem()
-
         createProfileMenuItem?.title = createProfileMenuTitle()
         calibrateMenuItem?.title = calibrateMenuTitle()
         preferencesMenuItem?.title = preferencesMenuTitle()
@@ -329,6 +342,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         HeadFlowSettings.isHeadScrollingEnabled.toggle()
         updateHeadScrollingMenuItem()
         print("HeadFlow: head scrolling is now \(HeadFlowSettings.isHeadScrollingEnabled ? "ON" : "OFF")")
+    }
+    
+    @objc func cycleScrollMode() {
+        handleGlobalCycleModes()
     }
 
     @objc func quit() {
@@ -381,6 +398,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
     func handleGlobalCalibrate() {
         calibrateHeadPosition()
     }
+    
+    func handleGlobalCycleModes() {
+            // Order: Cursor -> Continuous -> Auto Scroll -> Back to Cursor
+            // Enum: continuous=0, autoRead=2, cursor=3
+            let current = HeadFlowSettings.scrollMode
+            var next: ScrollMode = .continuous
+            switch current {
+            case .cursor: next = .continuous
+            case .continuous: next = .autoRead
+            case .autoRead: next = .cursor
+            }
+            HeadFlowSettings.scrollMode = next
+            // Update live state for UI feedback
+            if #available(macOS 14.0, *) {
+                MotionLiveState.shared.mode = next
+            }
+            print("HeadFlow: Cycled mode to \(next.displayName)")
+        }
     
     // MARK: - Welcome window
 
@@ -513,6 +548,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
             applyShortcut(
                 HeadFlowSettings.shortcutPreferences,
                 enabled: HeadFlowSettings.globalPreferencesShortcutEnabled,
+                to: item
+            )
+        }
+        
+        if let item = cycleModeMenuItem {
+            applyShortcut(
+                HeadFlowSettings.shortcutCycleModes,
+                enabled: HeadFlowSettings.globalCycleModesShortcutEnabled,
                 to: item
             )
         }

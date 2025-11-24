@@ -67,6 +67,9 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyGlobalCalibrateShortcutEnabled)
     private var globalCalibrateShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalCalibrateShortcutEnabled
     
+    @AppStorage(HeadFlowSettings.keyGlobalCycleModesShortcutEnabled)
+    private var globalCycleModesShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalCycleModesShortcutEnabled
+    
     @AppStorage(HeadFlowSettings.keyPauseOnManualScroll)
     private var pauseOnManualScroll: Bool = HeadFlowSettings.defaultPauseOnManualScroll
     
@@ -86,7 +89,7 @@ struct PreferencesView: View {
     @State private var createProfileShortcut = HeadFlowSettings.shortcutCreateProfile
     @State private var prefsShortcut = HeadFlowSettings.shortcutPreferences
     @State private var calibrateShortcut = HeadFlowSettings.shortcutCalibrate
-    
+    @State private var cycleModesShortcut = HeadFlowSettings.shortcutCycleModes // <--- New
     // Design system constants
     private let spacing: CGFloat = 20
     private let cardRadius: CGFloat = 12
@@ -198,6 +201,7 @@ struct PreferencesView: View {
         .onChange(of: calibrateShortcut) { _, newValue in
             HeadFlowSettings.shortcutCalibrate = newValue
         }
+        .onChange(of: cycleModesShortcut) { _, newValue in HeadFlowSettings.shortcutCycleModes = newValue }
     }
     
     // MARK: - Header
@@ -1088,6 +1092,9 @@ struct PreferencesView: View {
                         enabled: $globalCalibrateShortcutEnabled,
                         shortcut: $calibrateShortcut
                     )
+                    // New Shortcut Row
+
+                    shortcutRow(icon: "arrow.triangle.2.circlepath", title: "Cycle Scroll Mode (Cursor/Scroll)", enabled: $globalCycleModesShortcutEnabled, shortcut: $cycleModesShortcut)
                 }
                 
                 VStack(alignment: .leading, spacing: 8) {

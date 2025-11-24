@@ -24,6 +24,10 @@ enum HeadFlowSettings {
     static let keyShortcutProfile     = "shortcutCreateProfile"
     static let keyShortcutPreferences = "shortcutPreferences"
     static let keyShortcutCalibrate   = "shortcutCalibrate"
+    
+    // NEW KEYS
+    static let keyShortcutCycleModes  = "shortcutCycleModes"
+    static let keyGlobalCycleModesShortcutEnabled = "globalCycleModesShortcutEnabled"
 
     static let keyGlobalCalibrateShortcutEnabled = "globalCalibrateShortcutEnabled"
     
@@ -58,6 +62,9 @@ enum HeadFlowSettings {
     static let defaultHasSeenWelcome  = false
     static let defaultPauseOnManualScroll      = true
     static let defaultManualScrollPauseSeconds = 0.4   // 0.40s pause after manual scroll
+    
+    // NEW DEFAULTS
+    static let defaultGlobalCycleModesShortcutEnabled = true
 
     static let defaultToggleShortcut = KeyboardShortcut(
         key: "h",
@@ -77,6 +84,12 @@ enum HeadFlowSettings {
     static let defaultCalibrateShortcut = KeyboardShortcut(
         key: "k",
         modifiers: [.command, .option, .control]   // ⌃⌥⌘K
+    )
+    
+    // Default: Control + Option + Command + .
+    static let defaultCycleModesShortcut = KeyboardShortcut(
+        key: ".",
+        modifiers: [.command, .option, .control]   // ⌃⌥⌘.
     )
 
     // MARK: - Register defaults
@@ -106,6 +119,9 @@ enum HeadFlowSettings {
             keyGestureTiltThresholdDegrees: defaultGestureTiltThresholdDegrees,
             keyGestureCooldownSeconds:      defaultGestureCooldownSeconds,
             keyHasSeenWelcome:      defaultHasSeenWelcome,
+            
+            // Register new keys
+            keyGlobalCycleModesShortcutEnabled: defaultGlobalCycleModesShortcutEnabled
         ])
     }
 
@@ -277,6 +293,16 @@ enum HeadFlowSettings {
             UserDefaults.standard.set(newValue, forKey: keyGlobalToggleShortcutEnabled)
         }
     }
+    
+    static var globalCycleModesShortcutEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyGlobalCycleModesShortcutEnabled) as? Bool)
+            ?? defaultGlobalCycleModesShortcutEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGlobalCycleModesShortcutEnabled)
+        }
+    }
 
     static var globalCreateProfileShortcutEnabled: Bool {
         get {
@@ -335,7 +361,6 @@ enum HeadFlowSettings {
             let defaults = UserDefaults.standard
             guard let data = defaults.data(forKey: keyGestureSettings),
                   !data.isEmpty else {
-                // If nothing stored yet, return a sensible default config.
                 return defaultGestureSettings()
             }
 
@@ -358,12 +383,8 @@ enum HeadFlowSettings {
         }
     }
 
-    /// Provide initial mappings & an empty custom shortcut bank.
     private static func defaultGestureSettings() -> GestureSettings {
-        // By default, no gestures do anything until user configures them.
         var mappings: [GestureMapping] = []
-
-        // HeadFlow ON: 3 gestures
         for gesture in [GestureType.tiltLeft, .tiltRight, .shake] {
             mappings.append(GestureMapping(
                 context: .headFlowOn,
@@ -371,8 +392,6 @@ enum HeadFlowSettings {
                 action: .none
             ))
         }
-
-        // HeadFlow OFF: 5 gestures
         for gesture in GestureType.allCases {
             mappings.append(GestureMapping(
                 context: .headFlowOff,
@@ -380,7 +399,6 @@ enum HeadFlowSettings {
                 action: .none
             ))
         }
-
         return GestureSettings(mappings: mappings, customShortcuts: [])
     }
 
@@ -421,8 +439,12 @@ enum HeadFlowSettings {
         get { loadShortcut(forKey: keyShortcutCalibrate, default: defaultCalibrateShortcut) }
         set { saveShortcut(newValue, forKey: keyShortcutCalibrate) }
     }
+    
+    static var shortcutCycleModes: KeyboardShortcut {
+        get { loadShortcut(forKey: keyShortcutCycleModes, default: defaultCycleModesShortcut) }
+        set { saveShortcut(newValue, forKey: keyShortcutCycleModes) }
+    }
 
-    /// Integer version of baseLinesValue for scroll engine.
     static func baseLines() -> Int32 {
         Int32(baseLinesValue.rounded())
     }

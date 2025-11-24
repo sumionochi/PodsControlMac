@@ -14,7 +14,7 @@ enum StandardShortcutKind: String, Codable, CaseIterable, Identifiable, Hashable
     case spotlight
     case screenshotFull
     case screenshotSelection
-    case screenshotToolbar   // optional, can be unused for now
+    case screenshotToolbar  
 
     var id: String { rawValue }
 

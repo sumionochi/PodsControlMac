@@ -10,7 +10,8 @@ enum HeadFlowActionKind: String, Codable, CaseIterable, Identifiable, Hashable {
     case showHidePreferences
     case recalibrateNeutral
     case toggleHeadFlowScrolling
-
+    case cycleScrollMode
+    
     // Tuning: increase
     case increaseAcceleration
     case increaseDamping
@@ -35,7 +36,7 @@ enum HeadFlowActionKind: String, Codable, CaseIterable, Identifiable, Hashable {
         case .showHidePreferences:    return "Show Preferences"
         case .recalibrateNeutral:     return "Recalibrate neutral head position"
         case .toggleHeadFlowScrolling:return "Start / Stop HeadFlow scrolling"
-
+        case .cycleScrollMode:        return "Cycle Scroll Mode (Cursor -> Cont. -> Auto)" // <--- NEW
         case .increaseAcceleration:   return "Increase acceleration"
         case .increaseDamping:        return "Increase damping"
         case .increaseDeadZone:       return "Increase dead zone"

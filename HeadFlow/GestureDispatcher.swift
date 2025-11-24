@@ -72,7 +72,10 @@ final class GestureDispatcher {
 
         case .toggleHeadFlowScrolling:
             toggleHeadScrollingEnabled()
-
+            
+        case .cycleScrollMode:
+                    cycleScrollMode()
+            
         case .increaseAcceleration:
             bumpAcceleration(by: +0.1)
 
@@ -145,6 +148,43 @@ final class GestureDispatcher {
         // We don't have direct access to AppDelegate here.
         // Use NotificationCenter and let AppDelegate respond.
         postNotification(.headFlowTogglePreferencesRequested)
+    }
+    
+    private func cycleScrollMode() {
+        // Get current mode from frontmost app's profile
+        guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
+            return
+        }
+        
+        let manager = ProfileManager.shared
+        let config = manager.effectiveConfig(for: bundleID)
+        
+        // Cycle through: cursor -> continuous -> autoRead -> cursor
+        let nextMode: ScrollMode
+        switch config.scrollMode {
+        case .cursor:
+            nextMode = .continuous
+        case .continuous:
+            nextMode = .autoRead
+        case .autoRead:
+            nextMode = .cursor
+        }
+        
+        // Update the profile (or default settings if no profile exists)
+        if let profile = manager.profile(for: bundleID),
+           let index = manager.profiles.firstIndex(where: { $0.id == profile.id }) {
+            // Update existing profile - use scrollModeRaw
+            manager.profiles[index].scrollModeRaw = nextMode.rawValue
+            print("GestureDispatcher: cycled scroll mode to \(nextMode) for \(bundleID)")
+            ModeNotificationUtil.showModeChange(to: nextMode)
+            print("Switched to mode: \(nextMode)")
+        } else {
+            // Update default settings - scrollMode is fine here
+            HeadFlowSettings.scrollMode = nextMode
+            print("GestureDispatcher: cycled default scroll mode to \(nextMode)")
+            ModeNotificationUtil.showModeChange(to: nextMode)
+            print("Switched to mode: \(nextMode)")
+        }
     }
 
     private func postNotification(_ name: Notification.Name) {

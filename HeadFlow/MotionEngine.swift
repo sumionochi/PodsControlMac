@@ -13,13 +13,17 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         case modifier
         case manualScroll
     }
-
+    
     private let manager = CMHeadphoneMotionManager()
     private let queue = OperationQueue()
 
     // Last measured pitch (degrees) and neutral baseline.
     private var lastPitchDeg: Double?
     private var neutralPitchDeg: Double?
+    
+    private var lastYawDeg: Double?     // Track last yaw for calibration
+    private var neutralYawDeg: Double?  // Baseline for "center" cursor position
+    private let cursorLogic = CursorLogic()
 
     // Continuous mode: smoothed velocity (lines per second) + accumulator.
     private var lastContinuousTime: TimeInterval?
@@ -115,15 +119,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         hardStopScrolling()
     }
 
-    /// Safely get the bundle ID of the frontmost application.
-    private func frontmostBundleID() -> String? {
-        var id: String?
-        DispatchQueue.main.sync {
-            id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        }
-        return id
-    }
-
     /// Immediately stop all scrolling and reset timing + live state.
     private func hardStopScrolling() {
         lastContinuousTime = nil
@@ -162,122 +157,160 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
     /// Called whenever new motion data arrives (on our background queue).
     private func handle(motion: CMDeviceMotion) {
-        let pitchRad = motion.attitude.pitch
-        let pitchDeg = pitchRad * 180.0 / .pi
+            let pitchRad = motion.attitude.pitch
+            let pitchDeg = pitchRad * 180.0 / .pi
+            
+            // --- ADD: Calculate Yaw and Roll ---
+            let yawRad = motion.attitude.yaw
+            let yawDeg = yawRad * 180.0 / .pi
+            let rollRad = motion.attitude.roll
+            let rollDeg = rollRad * 180.0 / .pi
+            // -----------------------------------
 
-        lastPitchDeg = pitchDeg
+            lastPitchDeg = pitchDeg
+            lastYawDeg = yawDeg // <--- ADD THIS
 
-        // Auto-calibrate neutral on first value if needed.
-        if neutralPitchDeg == nil {
-            neutralPitchDeg = pitchDeg
-            print("MotionEngine: auto-calibrated neutral pitch = \(pitchDeg)")
-            return
-        }
+            // Auto-calibrate neutral on first value if needed.
+            if neutralPitchDeg == nil {
+                neutralPitchDeg = pitchDeg
+                neutralYawDeg = yawDeg // <--- ADD THIS
+                print("MotionEngine: auto-calibrated neutral pitch = \(pitchDeg)")
+                return
+            }
+            
+            // --- UPDATE: Unwrap both neutrals ---
+            guard let neutralP = neutralPitchDeg, let neutralY = neutralYawDeg else { return }
+            let delta = pitchDeg - neutralP
+            
+            // Calculate Yaw Delta (Joystick X input) with wrap-around fix
+            var deltaYaw = yawDeg - neutralY
+            if deltaYaw > 180 { deltaYaw -= 360 }
+            if deltaYaw < -180 { deltaYaw += 360 }
+            // ------------------------------------
+
+            // Resolve effective config for current app.
+            let bundleID = DispatchQueue.main.sync {
+                NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            }
+            let config = ProfileManager.shared.effectiveConfig(for: bundleID)
+            let mode = config.scrollMode // <--- Moved up for safety check use
         
-        guard let neutral = neutralPitchDeg else { return }
-        let delta = pitchDeg - neutral
+            // 🔹 Always run gesture detection, even when HeadFlow scrolling is OFF.
+            if mode != .cursor {
+                detectGestures(motion: motion, deltaPitch: delta)
+            }
+            // Global ON/OFF must be respected first.
+            guard HeadFlowSettings.isHeadScrollingEnabled else {
+                hardStopScrolling()
+                return
+            }
 
-        // 🔹 Always run gesture detection, even when HeadFlow scrolling is OFF.
-        detectGestures(motion: motion, deltaPitch: delta)
+            // Also respect per-app enable flag.
+            guard config.isEnabled else {
+                hardStopScrolling()
+                return
+            }
+            
+            // Smart pause: if user recently scrolled manually, back off briefly.
+            if ManualScrollPauseController.shared.isPausedForManualScroll {
+                hardStopScrolling()
+                publishPausedStatus(.manualScroll)
+                return
+            }
+            
+            // --- Safety: Shift clutch ---
+            if HeadFlowSettings.shiftToPauseEnabled,
+               NSEvent.modifierFlags.contains(.shift) {
+                hardStopScrolling()
+                publishPausedStatus(.modifier)
+                return
+            }
 
-        // Global ON/OFF must be respected first.
-        guard HeadFlowSettings.isHeadScrollingEnabled else {
-            hardStopScrolling()
-            return
-        }
+            // --- Safety: pointer movement ---
+            // UPDATE: Skip this check if we are in Cursor Mode (otherwise head movement pauses itself)
+            if mode != .cursor, // <--- ADD THIS CONDITION
+               HeadFlowSettings.pauseWhilePointerActive,
+               PointerActivityMonitor.shared.isRecentlyActive(threshold: 0.25) {
+                hardStopScrolling()
+                publishPausedStatus(.pointer)
+                return
+            }
 
-        // Resolve effective config for current app.
-        let bundleID = frontmostBundleID()
-        let config = ProfileManager.shared.effectiveConfig(for: bundleID)
+            // --- Safety: typing activity ---
+            if HeadFlowSettings.pauseWhileTyping,
+               TypingActivityMonitor.shared.isRecentlyActive(threshold: 0.40) {
+                hardStopScrolling()
+                publishPausedStatus(.typing)
+                return
+            }
 
-        // Also respect per-app enable flag.
-        guard config.isEnabled else {
-            hardStopScrolling()
-            return
-        }
-        
-        // Smart pause: if user recently scrolled manually, back off briefly.
-        if ManualScrollPauseController.shared.isPausedForManualScroll {
-            hardStopScrolling()
-            publishPausedStatus(.manualScroll)  // ADD THIS LINE
-            return
-        }
-        
-        // --- Safety: Shift clutch ---
-        if HeadFlowSettings.shiftToPauseEnabled,
-           NSEvent.modifierFlags.contains(.shift) {
-            hardStopScrolling()
-            publishPausedStatus(.modifier)
-            return
-        }
+            // Current tuning settings for this app.
+            let deadZoneDeg = max(0.0, config.deadZoneDegrees)
+            let maxTiltDeg  = max(1.0, config.maxTiltDegrees)
+            let baseLines   = max(Int32(0), min(Int32(500), config.baseLines))
+            let sensitivity = max(0.0, min(100.0, config.scrollSensitivity))
+            
+            // Map tilt to [-1, 1] and magnitude to [0, 1].
+            var factor: Double = 0.0
+            var magnitude: Double = 0.0
 
-        // --- Safety: pointer movement ---
-        if HeadFlowSettings.pauseWhilePointerActive,
-           PointerActivityMonitor.shared.isRecentlyActive(threshold: 0.25) {
-            hardStopScrolling()
-            publishPausedStatus(.pointer)
-            return
-        }
+            if abs(delta) >= deadZoneDeg {
+                let clamped = max(-maxTiltDeg, min(maxTiltDeg, delta))
+                factor = clamped / maxTiltDeg
+                magnitude = abs(factor)
+            }
 
-        // --- Safety: typing activity ---
-        if HeadFlowSettings.pauseWhileTyping,
-           TypingActivityMonitor.shared.isRecentlyActive(threshold: 0.40) {
-            hardStopScrolling()
-            publishPausedStatus(.typing)
-            return
-        }
+            let sensitivityNorm = sensitivity / 100.0
+            let minSpeedMultiplier: Double = 0.1
+            let maxSpeedMultiplier: Double = 4.0
+            let speedMultiplier = minSpeedMultiplier + (maxSpeedMultiplier - minSpeedMultiplier) * sensitivityNorm
 
-        // Current tuning settings for this app.
-        let deadZoneDeg = max(0.0, config.deadZoneDegrees)
-        let maxTiltDeg  = max(1.0, config.maxTiltDegrees) // avoid /0
-        let baseLines   = max(Int32(0), min(Int32(500), config.baseLines)) // safety clamp
-        let sensitivity = max(0.0, min(100.0, config.scrollSensitivity))   // 0–100
-        let mode        = config.scrollMode
-        
-        // Map tilt to [-1, 1] and magnitude to [0, 1].
-        // Inside the dead zone we just let smoothing ease us to 0 — no hard reset.
-        var factor: Double = 0.0     // -1...1, sign gives direction (up/down)
-        var magnitude: Double = 0.0  // 0...1, how strong the tilt is
+            switch mode {
+            case .continuous:
+                handleContinuousScroll(
+                    factor: factor,
+                    magnitude: magnitude,
+                    baseLines: baseLines,
+                    speedMultiplier: speedMultiplier
+                )
 
-        if abs(delta) >= deadZoneDeg {
-            let clamped = max(-maxTiltDeg, min(maxTiltDeg, delta))
-            factor = clamped / maxTiltDeg
-            magnitude = abs(factor)
-        }
+            case .autoRead:
+                handleAutoReadScroll(
+                    factor: factor,
+                    magnitude: magnitude,
+                    baseLines: baseLines,
+                    speedMultiplier: speedMultiplier
+                )
+                
+            // --- ADD THIS CASE ---
+            case .cursor:
+                // In cursor mode:
+                // - deltaYaw (turn left/right) controls horizontal cursor movement (X)
+                // - delta (pitch up/down) controls vertical cursor movement (Y)
+                // - deltaYaw also triggers clicks when turning with Command held
+                
+                // Pass to cursor logic for processing
+                cursorLogic.update(yaw: deltaYaw, pitch: delta, roll: rollDeg)
+                
+                // Update live state for cursor mode
+                DispatchQueue.main.async {
+                    let live = MotionLiveState.shared
+                    live.mode = .cursor
+                    live.status = .tracking
+                    live.tiltDegrees = deltaYaw  // Show yaw angle for click feedback
+                    live.tiltPercent = 0.0
+                    live.velocityLinesPerSecond = 0.0
+                }
+            // ---------------------
+            }
 
-        // Map sensitivity slider (0–100) to a wide speed multiplier range.
-        // 0  → very slow (0.1x)
-        // 100 → very fast (4.0x)
-        let sensitivityNorm = sensitivity / 100.0
-        let minSpeedMultiplier: Double = 0.1
-        let maxSpeedMultiplier: Double = 4.0
-        let speedMultiplier = minSpeedMultiplier + (maxSpeedMultiplier - minSpeedMultiplier) * sensitivityNorm
-
-        switch mode {
-        case .continuous:
-            handleContinuousScroll(
-                factor: factor,
-                magnitude: magnitude,
-                baseLines: baseLines,
-                speedMultiplier: speedMultiplier
+            // After updating scroll, publish live state for the UI.
+            publishLiveState(
+                tiltDeltaDegrees: delta,
+                maxTiltDegrees: maxTiltDeg,
+                mode: mode
             )
-
-        case .autoRead:
-            handleAutoReadScroll(
-                factor: factor,
-                magnitude: magnitude,
-                baseLines: baseLines,
-                speedMultiplier: speedMultiplier
-            )
         }
-
-        // After updating scroll, publish live state for the UI.
-        publishLiveState(
-            tiltDeltaDegrees: delta,
-            maxTiltDegrees: maxTiltDeg,
-            mode: mode
-        )
-    }
 
     // MARK: - Continuous mode (smoothed)
 
@@ -466,9 +499,9 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         case .continuous:
             velocityLps = continuousCurrentSpeed
         case .autoRead:
-            // autoReadCurrentSpeed is positive for downward scroll;
-            // treat downward as negative velocity for the UI.
             velocityLps = -autoReadCurrentSpeed
+        case .cursor:
+            velocityLps = 0.0
         }
 
         // Decide status for UI based on current app / permissions.
@@ -497,12 +530,34 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
     /// Manually re-calibrate the neutral head position.
     func calibrateNeutral() {
-        if let last = lastPitchDeg {
-            neutralPitchDeg = last
-            print("MotionEngine: manually calibrated neutral pitch = \(last)")
+        // Reset any ongoing state first
+        hardStopScrolling()
+        
+        if let lastP = lastPitchDeg, let lastY = lastYawDeg {
+            neutralPitchDeg = lastP
+            neutralYawDeg = lastY
+            
+            // Get current mode to check if we're in cursor mode
+            // Use async to avoid deadlock if called from main thread
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                
+                let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+                let config = ProfileManager.shared.effectiveConfig(for: bundleID)
+                
+                // If in cursor mode, center the cursor on screen
+                if config.scrollMode == .cursor {
+                    CursorEngine.centerCursor()
+                    self.cursorLogic.resetSmoothing()
+                    print("MotionEngine: Calibrated neutral (P: \(lastP), Y: \(lastY)) + centered cursor")
+                } else {
+                    print("MotionEngine: Calibrated neutral (P: \(lastP), Y: \(lastY))")
+                }
+            }
         } else {
             neutralPitchDeg = nil
-            print("MotionEngine: no motion samples yet – will auto-calibrate on next sample")
+            neutralYawDeg = nil
+            print("MotionEngine: No motion samples yet – will auto-calibrate on next sample")
         }
     }
 
@@ -512,15 +567,17 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         print("MotionEngine: headphones connected")
         HeadFlowStatus.shared.setHeadphonesStatus(.connected)
         neutralPitchDeg = nil
+        neutralYawDeg = nil
         hardStopScrolling()
 
         DispatchQueue.main.async {
             let phones = HeadphoneDeviceState.shared
             phones.isConnected = true
-            // CMHeadphoneMotionManager doesn’t expose a name directly;
-            // we can fill this with a generic label for now.
             phones.deviceName = "Headphones"
             phones.kind = .other
+            
+            // Center cursor when headphones connect
+            CursorEngine.centerCursor()
         }
     }
 
@@ -528,6 +585,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         print("MotionEngine: headphones disconnected")
         HeadFlowStatus.shared.setHeadphonesStatus(.notConnected)
         neutralPitchDeg = nil
+        neutralYawDeg = nil
         hardStopScrolling()
 
         DispatchQueue.main.async {
