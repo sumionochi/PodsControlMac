@@ -1,3 +1,4 @@
+//ShortcutRecorderButton
 import SwiftUI
 import AppKit
 

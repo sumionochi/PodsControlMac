@@ -6,15 +6,21 @@ import AppKit
 /// Displays macOS-style HUD notifications for mode switches
 struct ModeNotificationUtil {
     
+    private static var activeHUD: ModeHUDWindow?
     /// Shows a visual notification for mode change
     static func showModeChange(to mode: ScrollMode) {
         DispatchQueue.main.async {
+            activeHUD?.close()
+            activeHUD = nil
             // Get mode name and icon
             let (modeName, iconName) = modeInfo(for: mode)
             
             // Create and show the HUD window
             let hud = ModeHUDWindow(mode: modeName, icon: iconName)
-            hud.show()
+            activeHUD = hud
+            hud.show(onDismiss: {
+                activeHUD = nil
+            })
         }
     }
     
@@ -25,7 +31,7 @@ struct ModeNotificationUtil {
         case .autoRead:
             return ("Auto Read", "book.circle.fill")
         case .cursor:
-            return ("Cursor Control", "cursorarrow.circle.fill")
+            return ("Cursor Control", "cursorarrow.motionlines")
         }
     }
 }
@@ -34,6 +40,8 @@ struct ModeNotificationUtil {
 
 private class ModeHUDWindow: NSWindow {
     
+    private var onDismiss: (() -> Void)?
+
     init(mode: String, icon: String) {
         // Create window in center of main screen
         let screenFrame = NSScreen.main?.frame ?? .zero
@@ -57,10 +65,12 @@ private class ModeHUDWindow: NSWindow {
         self.backgroundColor = .clear
         self.level = .statusBar
         self.isMovable = false
-        self.isReleasedWhenClosed = true
         self.ignoresMouseEvents = true
         self.hasShadow = true
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+
+        // IMPORTANT: Let ARC handle lifetime; we manage via ModeNotificationUtil.activeHUD
+        self.isReleasedWhenClosed = false
         
         // Create content view
         let contentView = ModeHUDView(mode: mode, icon: icon)
@@ -68,7 +78,7 @@ private class ModeHUDWindow: NSWindow {
         
         // Fade in animation
         self.alphaValue = 0.0
-        self.makeKeyAndOrderFront(nil)
+        self.orderFrontRegardless()
         
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.2
@@ -76,8 +86,10 @@ private class ModeHUDWindow: NSWindow {
         })
     }
     
-    func show() {
-        // Auto-dismiss after 1.5 seconds
+    /// Show + schedule auto-dismiss
+    func show(onDismiss: (() -> Void)? = nil) {
+        self.onDismiss = onDismiss
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             self?.dismiss()
         }
@@ -87,8 +99,11 @@ private class ModeHUDWindow: NSWindow {
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.3
             self.animator().alphaValue = 0.0
-        }, completionHandler: {
+        }, completionHandler: { [weak self] in
+            guard let self = self else { return }
             self.close()
+            self.onDismiss?()
+            self.onDismiss = nil
         })
     }
 }

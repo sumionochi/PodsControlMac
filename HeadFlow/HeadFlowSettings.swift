@@ -1,5 +1,6 @@
+//HeadFlowSettings
 import Foundation
-
+import AppKit
 /// Central place for user defaults keys / default values.
 enum HeadFlowSettings {
     // MARK: - Keys
@@ -39,6 +40,18 @@ enum HeadFlowSettings {
     static let keyGestureCooldownSeconds      = "gestureCooldownSeconds"
     static let keyHasSeenWelcome      = "hasSeenWelcome"
     
+    // Cursor control settings
+    static let keyCursorSpeed                = "cursorSpeed"
+    static let keyCursorDeadZone             = "cursorDeadZone"
+    static let keyCursorSmoothing            = "cursorSmoothing"
+    static let keyCursorSingleClickYawDeg    = "cursorSingleClickYawDegrees"
+    static let keyCursorDoubleClickYawDeg    = "cursorDoubleClickYawDegrees"
+    static let keyCursorClickCooldown        = "cursorClickCooldown"
+
+    static let keyCursorClickModifiersRaw       = "cursorClickModifiersRaw"
+    static let keyCursorDragExtraModifiersRaw   = "cursorDragExtraModifiersRaw"
+
+    
     // MARK: - Defaults
 
     static let defaultIsHeadScrollingEnabled = true
@@ -56,12 +69,25 @@ enum HeadFlowSettings {
     static let defaultGlobalToggleShortcutEnabled        = true
     static let defaultGlobalCreateProfileShortcutEnabled = true
     static let defaultGlobalPreferencesShortcutEnabled   = true
-    static let defaultGestureTiltThresholdDegrees = 20.0   // degrees from neutral
+    static let defaultGestureTiltThresholdDegrees = 10.0   // degrees from neutral
     static let defaultGestureCooldownSeconds      = 0.6
     static let defaultGlobalCalibrateShortcutEnabled = true
     static let defaultHasSeenWelcome  = false
     static let defaultPauseOnManualScroll      = true
     static let defaultManualScrollPauseSeconds = 0.4   // 0.40s pause after manual scroll
+    // Cursor control defaults
+    static let defaultCursorSpeed: Double             = 2.5
+    static let defaultCursorDeadZone: Double          = 0.3
+    static let defaultCursorSmoothing: Double         = 0.3
+    static let defaultCursorSingleClickYawDeg: Double = 10.0
+    static let defaultCursorDoubleClickYawDeg: Double = 20.0
+    static let defaultCursorClickCooldown: Double     = 0.5
+
+    static let defaultCursorClickModifiersRaw: Int =
+        Int(NSEvent.ModifierFlags.command.rawValue)
+
+    static let defaultCursorDragExtraModifiersRaw: Int =
+        Int(NSEvent.ModifierFlags.control.rawValue)
     
     // NEW DEFAULTS
     static let defaultGlobalCycleModesShortcutEnabled = true
@@ -119,6 +145,15 @@ enum HeadFlowSettings {
             keyGestureTiltThresholdDegrees: defaultGestureTiltThresholdDegrees,
             keyGestureCooldownSeconds:      defaultGestureCooldownSeconds,
             keyHasSeenWelcome:      defaultHasSeenWelcome,
+            // Cursor control
+            keyCursorSpeed:                defaultCursorSpeed,
+            keyCursorDeadZone:             defaultCursorDeadZone,
+            keyCursorSmoothing:            defaultCursorSmoothing,
+            keyCursorSingleClickYawDeg:    defaultCursorSingleClickYawDeg,
+            keyCursorDoubleClickYawDeg:    defaultCursorDoubleClickYawDeg,
+            keyCursorClickCooldown:        defaultCursorClickCooldown,
+            keyCursorClickModifiersRaw:       defaultCursorClickModifiersRaw,
+            keyCursorDragExtraModifiersRaw:   defaultCursorDragExtraModifiersRaw,
             
             // Register new keys
             keyGlobalCycleModesShortcutEnabled: defaultGlobalCycleModesShortcutEnabled
@@ -341,6 +376,98 @@ enum HeadFlowSettings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: keyPauseOnManualScroll)
+        }
+    }
+    
+    // MARK: - Cursor control
+
+    static var cursorSpeed: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyCursorSpeed) as? Double)
+            ?? defaultCursorSpeed
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyCursorSpeed)
+        }
+    }
+
+    static var cursorDeadZone: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyCursorDeadZone) as? Double)
+            ?? defaultCursorDeadZone
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyCursorDeadZone)
+        }
+    }
+
+    static var cursorSmoothing: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyCursorSmoothing) as? Double)
+            ?? defaultCursorSmoothing
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyCursorSmoothing)
+        }
+    }
+
+    static var cursorSingleClickYawDegrees: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyCursorSingleClickYawDeg) as? Double)
+            ?? defaultCursorSingleClickYawDeg
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyCursorSingleClickYawDeg)
+        }
+    }
+
+    static var cursorDoubleClickYawDegrees: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyCursorDoubleClickYawDeg) as? Double)
+            ?? defaultCursorDoubleClickYawDeg
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyCursorDoubleClickYawDeg)
+        }
+    }
+
+    static var cursorClickCooldown: Double {
+        get {
+            (UserDefaults.standard.object(forKey: keyCursorClickCooldown) as? Double)
+            ?? defaultCursorClickCooldown
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyCursorClickCooldown)
+        }
+    }
+
+    private static let allowedCursorFlags: NSEvent.ModifierFlags =
+        [.command, .option, .control, .shift]
+
+    static var cursorClickModifiers: NSEvent.ModifierFlags {
+        get {
+            let raw = (UserDefaults.standard.object(forKey: keyCursorClickModifiersRaw) as? Int)
+                      ?? defaultCursorClickModifiersRaw
+            return NSEvent.ModifierFlags(rawValue: UInt(raw))
+                .intersection(allowedCursorFlags)
+        }
+        set {
+            let filtered = newValue.intersection(allowedCursorFlags)
+            guard !filtered.isEmpty else { return }    // don't allow “no modifier”
+            UserDefaults.standard.set(Int(filtered.rawValue), forKey: keyCursorClickModifiersRaw)
+        }
+    }
+
+    static var cursorDragExtraModifiers: NSEvent.ModifierFlags {
+        get {
+            let raw = (UserDefaults.standard.object(forKey: keyCursorDragExtraModifiersRaw) as? Int)
+                      ?? defaultCursorDragExtraModifiersRaw
+            return NSEvent.ModifierFlags(rawValue: UInt(raw))
+                .intersection(allowedCursorFlags)
+        }
+        set {
+            let filtered = newValue.intersection(allowedCursorFlags)
+            UserDefaults.standard.set(Int(filtered.rawValue), forKey: keyCursorDragExtraModifiersRaw)
         }
     }
 

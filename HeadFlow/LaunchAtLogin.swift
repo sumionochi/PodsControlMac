@@ -21,7 +21,7 @@ enum LaunchAtLoginMode: Int, CaseIterable, Identifiable {
         }
     }
 }
-
+//LaunchAtLoginController
 /// Syncs our launch-at-login setting with macOS using SMAppService (macOS 13+).
 enum LaunchAtLoginController {
 

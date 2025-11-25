@@ -1,3 +1,4 @@
+//HeadphoneDeviceState
 import Foundation
 
 /// Shared state describing the currently connected headphone device

@@ -151,39 +151,36 @@ final class GestureDispatcher {
     }
     
     private func cycleScrollMode() {
-        // Get current mode from frontmost app's profile
         guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
+            // No frontmost app – just use global
+            let nextGlobal = nextMode(from: HeadFlowSettings.scrollMode)
+            HeadFlowSettings.scrollMode = nextGlobal
+            ModeNotificationUtil.showModeChange(to: nextGlobal)
             return
         }
         
         let manager = ProfileManager.shared
         let config = manager.effectiveConfig(for: bundleID)
         
-        // Cycle through: cursor -> continuous -> autoRead -> cursor
-        let nextMode: ScrollMode
-        switch config.scrollMode {
-        case .cursor:
-            nextMode = .continuous
-        case .continuous:
-            nextMode = .autoRead
-        case .autoRead:
-            nextMode = .cursor
-        }
+        let next = nextMode(from: config.scrollMode)
         
-        // Update the profile (or default settings if no profile exists)
         if let profile = manager.profile(for: bundleID),
            let index = manager.profiles.firstIndex(where: { $0.id == profile.id }) {
-            // Update existing profile - use scrollModeRaw
-            manager.profiles[index].scrollModeRaw = nextMode.rawValue
-            print("GestureDispatcher: cycled scroll mode to \(nextMode) for \(bundleID)")
-            ModeNotificationUtil.showModeChange(to: nextMode)
-            print("Switched to mode: \(nextMode)")
+            manager.profiles[index].scrollModeRaw = next.rawValue
+            print("GestureDispatcher: cycled scroll mode to \(next) for \(bundleID)")
         } else {
-            // Update default settings - scrollMode is fine here
-            HeadFlowSettings.scrollMode = nextMode
-            print("GestureDispatcher: cycled default scroll mode to \(nextMode)")
-            ModeNotificationUtil.showModeChange(to: nextMode)
-            print("Switched to mode: \(nextMode)")
+            HeadFlowSettings.scrollMode = next
+            print("GestureDispatcher: cycled default scroll mode to \(next)")
+        }
+
+        ModeNotificationUtil.showModeChange(to: next)
+    }
+
+    private func nextMode(from current: ScrollMode) -> ScrollMode {
+        switch current {
+        case .cursor:     return .continuous
+        case .continuous: return .autoRead
+        case .autoRead:   return .cursor
         }
     }
 

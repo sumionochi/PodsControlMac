@@ -1,3 +1,4 @@
+//GlobalShortcutMonitor
 import Foundation
 import AppKit
 
@@ -88,6 +89,17 @@ final class GlobalShortcutMonitor {
             }
             return
         }
+        
+        // Cycle scroll mode
+        if HeadFlowSettings.globalCycleModesShortcutEnabled,
+           HeadFlowSettings.shortcutCycleModes.matches(event: event) {
+
+            DispatchQueue.main.async {
+                handler.handleGlobalCycleModes()
+            }
+            return
+        }
+
     }
 
 }

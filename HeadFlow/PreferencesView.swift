@@ -1,5 +1,8 @@
+//PreferencesView
 import SwiftUI
 import AppKit
+
+
 
 /// Professional redesigned preferences UI for HeadFlow with standardized spacing and layout
 struct PreferencesView: View {
@@ -75,6 +78,30 @@ struct PreferencesView: View {
     
     @AppStorage(HeadFlowSettings.keyManualScrollPauseSeconds)
     private var manualScrollPauseSeconds: Double = HeadFlowSettings.defaultManualScrollPauseSeconds
+    
+    @AppStorage(HeadFlowSettings.keyCursorSpeed)
+    private var cursorSpeed = HeadFlowSettings.defaultCursorSpeed
+
+    @AppStorage(HeadFlowSettings.keyCursorDeadZone)
+    private var cursorDeadZone = HeadFlowSettings.defaultCursorDeadZone
+
+    @AppStorage(HeadFlowSettings.keyCursorSmoothing)
+    private var cursorSmoothing = HeadFlowSettings.defaultCursorSmoothing
+
+    @AppStorage(HeadFlowSettings.keyCursorSingleClickYawDeg)
+    private var singleClickYaw = HeadFlowSettings.defaultCursorSingleClickYawDeg
+
+    @AppStorage(HeadFlowSettings.keyCursorDoubleClickYawDeg)
+    private var doubleClickYaw = HeadFlowSettings.defaultCursorDoubleClickYawDeg
+
+    @AppStorage(HeadFlowSettings.keyCursorClickCooldown)
+    private var clickCooldown = HeadFlowSettings.defaultCursorClickCooldown
+
+    @AppStorage(HeadFlowSettings.keyCursorClickModifiersRaw)
+    private var clickRaw: Int = HeadFlowSettings.defaultCursorClickModifiersRaw
+
+    @AppStorage(HeadFlowSettings.keyCursorDragExtraModifiersRaw)
+    private var dragRaw: Int = HeadFlowSettings.defaultCursorDragExtraModifiersRaw
     
     private var scrollMode: ScrollMode {
         get { ScrollMode(rawValue: scrollModeRaw) ?? .continuous }
@@ -640,6 +667,125 @@ struct PreferencesView: View {
                         format: "%.0f"
                     )
                 }
+                
+                settingsCard(
+                                title: "Cursor Control",
+                                icon: "cursorarrow"
+                            ) {
+                                Text("Fine-tune how the head-controlled pointer moves and how big a turn it needs to click.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.tertiary)
+
+                                Divider()
+                                    .padding(.vertical, 4)
+
+                                // Pointer movement
+                                sliderSetting(
+                                    title: "Pointer Speed",
+                                    icon: "cursorarrow.motionlines",
+                                    value: $cursorSpeed,
+                                    range: 0.5...5.0,
+                                    step: 0.1,
+                                    format: "%.1fx"
+                                )
+
+                                sliderSetting(
+                                    title: "Pointer Dead Zone",
+                                    icon: "circle.dotted",
+                                    value: $cursorDeadZone,
+                                    range: 0.0...5.0,
+                                    step: 0.1,
+                                    format: "%.1f°"
+                                )
+
+                                sliderSetting(
+                                    title: "Pointer Smoothing",
+                                    icon: "waveform.path",
+                                    value: $cursorSmoothing,
+                                    range: 0.0...1.0,
+                                    step: 0.05,
+                                    format: "%.2f"
+                                )
+
+                                Divider()
+                                    .padding(.vertical, 4)
+
+                                // Click gesture yaw thresholds
+                                sliderSetting(
+                                    title: "Single-Click Turn Angle",
+                                    icon: "cursorarrow.click",
+                                    value: $singleClickYaw,
+                                    range: 5.0...30.0,
+                                    step: 1.0,
+                                    format: "%.0f°"
+                                )
+
+                                sliderSetting(
+                                    title: "Double-Click Turn Angle",
+                                    icon: "cursorarrow.rays",
+                                    value: Binding(
+                                        get: { doubleClickYaw },
+                                        set: { newValue in
+                                            // keep double-click at least 1° above single-click
+                                            doubleClickYaw = max(newValue, singleClickYaw + 1.0)
+                                        }
+                                    ),
+                                    range: 8.0...40.0,
+                                    step: 1.0,
+                                    format: "%.0f°"
+                                )
+
+                                sliderSetting(
+                                    title: "Click Cooldown",
+                                    icon: "timer",
+                                    value: $clickCooldown,
+                                    range: 0.1...1.5,
+                                    step: 0.05,
+                                    format: "%.2fs"
+                                )
+
+                                Divider()
+                                    .padding(.vertical, 4)
+
+                                // Modifier mapping for click + drag
+                                let allowedFlags: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+
+                                CursorModifierPicker(
+                                    title: "Click combo",
+                                    flags: Binding(
+                                        get: {
+                                            NSEvent.ModifierFlags(rawValue: UInt(clickRaw))
+                                        },
+                                        set: { newFlags in
+                                            var filtered = newFlags.intersection(allowedFlags)
+                                            // Don’t allow “no modifier” for click combo
+                                            if filtered.isEmpty {
+                                                filtered = [.command] // or just return to keep previous
+                                            }
+                                            clickRaw = Int(filtered.rawValue)
+                                        }
+                                    )
+                                )
+
+                                CursorModifierPicker(
+                                    title: "Extra keys for drag (held with click combo)",
+                                    flags: Binding(
+                                        get: {
+                                            NSEvent.ModifierFlags(rawValue: UInt(dragRaw))
+                                        },
+                                        set: { newFlags in
+                                            let filtered = newFlags.intersection(allowedFlags)
+                                            dragRaw = Int(filtered.rawValue)
+                                        }
+                                    )
+                                )
+
+
+                                Text("Example: Click = ⌘, Drag = ⌘ + ^ (control). You can also choose combos like ⌘+⌥ for click, and ⌘+⌥+^ for drag.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                
+                            }
                 
                 settingsCard(
                     title: "Scroll Behavior",
@@ -1621,6 +1767,41 @@ struct ShortcutRecorderField: View {
         shortcut = KeyboardShortcut(key: String(first), modifiers: mods)
     }
 }
+
+struct CursorModifierPicker: View {
+    let title: String
+    @Binding var flags: NSEvent.ModifierFlags
+
+    private let allKeys = CursorModifierKey.allCases
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline)
+            HStack(spacing: 12) {
+                ForEach(allKeys) { key in
+                    Toggle(key.displayName, isOn: Binding(
+                        get: { flags.contains(key.eventFlag) },
+                        set: { isOn in
+                            var newFlags = flags
+                            if isOn {
+                                newFlags.insert(key.eventFlag)
+                            } else {
+                                newFlags.remove(key.eventFlag)
+                            }
+                            // Don’t allow “no modifier” for click combo
+                            if !newFlags.isEmpty {
+                                flags = newFlags
+                            }
+                        }
+                    ))
+                    .toggleStyle(.checkbox)
+                }
+            }
+        }
+    }
+}
+
 
 #Preview {
     PreferencesView()

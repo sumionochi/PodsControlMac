@@ -1,3 +1,4 @@
+//ManualScrollPauseController
 import Foundation
 
 /// Tracks recent manual (mouse/trackpad) scrolling so MotionEngine

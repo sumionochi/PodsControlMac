@@ -1,3 +1,4 @@
+//ScrollMode
 import Foundation
 
 /// Different ways to translate head tilt into scrolling behavior.

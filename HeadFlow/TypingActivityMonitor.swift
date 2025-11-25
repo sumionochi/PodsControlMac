@@ -1,3 +1,4 @@
+//TypingActivityMonitor
 import Foundation
 import AppKit
 

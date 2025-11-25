@@ -1,3 +1,4 @@
+//CursorLogic
 import Foundation
 import CoreGraphics
 import AppKit
@@ -6,24 +7,45 @@ import AppKit
 final class CursorLogic {
     
     // Cursor movement sensitivity and smoothing
-    private let movementSpeed: CGFloat = 2.5  // Base speed multiplier
-    private let deadZone: Double = 0.3  // Ignore movements below this threshold (degrees)
-    private let smoothingFactor: CGFloat = 0.3  // 0-1, higher = more smoothing/weight
+    private var movementSpeed: CGFloat {
+        CGFloat(HeadFlowSettings.cursorSpeed)
+    }
+
+    private var deadZone: Double {
+        HeadFlowSettings.cursorDeadZone
+    }
+
+    private var smoothingFactor: CGFloat {
+        CGFloat(HeadFlowSettings.cursorSmoothing)
+    }
+
+    
     
     // Smoothed velocity for weighted movement
     private var smoothedDeltaX: CGFloat = 0.0
     private var smoothedDeltaY: CGFloat = 0.0
     
     // Click detection thresholds (using YAW - head turning left/right)
-    private let singleClickYawThreshold: Double = 10.0     // 10° turn for single click
-    private let doubleClickYawThreshold: Double = 20.0     // 20° turn for double click
-    private let clickCooldown: TimeInterval = 0.5          // seconds between clicks
+    private var singleClickYawThreshold: Double {
+        HeadFlowSettings.cursorSingleClickYawDegrees
+    }
+
+    private var doubleClickYawThreshold: Double {
+        max(
+            HeadFlowSettings.cursorDoubleClickYawDegrees,
+            HeadFlowSettings.cursorSingleClickYawDegrees + 1.0 // keep > single
+        )
+    }
+
+    private var clickCooldown: TimeInterval {
+        HeadFlowSettings.cursorClickCooldown
+    }
     
     // State tracking
     private var lastClickTime: CFAbsoluteTime = 0
     private var isDragging = false
-    private var wasCommandPressed = false
-    private var wasControlPressed = false
+    private var wasClickComboActive = false
+    private var wasDragComboActive  = false
     
     // Click gesture state
     private enum ClickGestureState {
@@ -40,46 +62,63 @@ final class CursorLogic {
     private var clickState: ClickGestureState = .idle
     
     func update(yaw: Double, pitch: Double, roll: Double) {
-        let isCommandPressed = NSEvent.modifierFlags.contains(.command)
-        let isControlPressed = NSEvent.modifierFlags.contains(.control)
-        
-        // Detect command key press/release
-        if isCommandPressed && !wasCommandPressed {
-            // Command just pressed - freeze cursor for stable clicking
+        // 1) Current modifier flags (only the 4 we care about)
+        let rawFlags = NSEvent.modifierFlags
+        let flags = rawFlags.intersection([.command, .option, .control, .shift])
+
+        // 2) User-configured combos
+        let clickCombo = HeadFlowSettings.cursorClickModifiers          // e.g. ⌘ or ⌘+⌥
+        let dragExtra  = HeadFlowSettings.cursorDragExtraModifiers      // e.g. ^
+
+        // Full drag combo = click combo + extra drag modifiers
+        let dragCombo = clickCombo.union(dragExtra)                      // e.g. ⌘+^
+
+        // 3) Are those combos currently held?
+        // `contains` for OptionSet behaves like "isSuperset(of:)"
+        let isClickComboActive = !clickCombo.isEmpty && flags.contains(clickCombo)
+        let isDragComboActive  = !dragCombo.isEmpty && flags.contains(dragCombo)
+
+        // === PRESS / RELEASE HANDLING ===
+
+        // Click combo pressed
+        if isClickComboActive && !wasClickComboActive {
+            // combo just pressed - freeze cursor for stable clicking
             smoothedDeltaX = 0.0
             smoothedDeltaY = 0.0
             clickState = .idle
-            print("CursorLogic: Command pressed - cursor frozen")
-        } else if !isCommandPressed && wasCommandPressed {
-            // Command just released - end any drag and reset
+            print("CursorLogic: click combo pressed - cursor frozen")
+        }
+        // Click combo released
+        else if !isClickComboActive && wasClickComboActive {
             if isDragging {
                 CursorEngine.endDrag()
                 isDragging = false
-                print("CursorLogic: Ended drag (command released)")
+                print("CursorLogic: Ended drag (click combo released)")
             }
             clickState = .idle
         }
-        
-        // Detect control key for drag mode
-        if isControlPressed && !wasControlPressed && isCommandPressed {
-            print("CursorLogic: Control pressed - drag mode ready")
-        } else if !isControlPressed && wasControlPressed {
-            // Control released - end any drag
+
+        // Drag combo pressed (must include the click combo as well)
+        if isDragComboActive && !wasDragComboActive && isClickComboActive {
+            print("CursorLogic: drag combo pressed - drag mode ready")
+        }
+        // Drag combo released
+        else if !isDragComboActive && wasDragComboActive {
             if isDragging {
                 CursorEngine.endDrag()
                 isDragging = false
                 clickState = .idle
-                print("CursorLogic: Ended drag (control released)")
+                print("CursorLogic: Ended drag (drag combo released)")
             }
         }
-        
-        wasCommandPressed = isCommandPressed
-        wasControlPressed = isControlPressed
+
+        wasClickComboActive = isClickComboActive
+        wasDragComboActive  = isDragComboActive
         
         // --- CURSOR MOVEMENT ---
         // Move cursor when Command is NOT held, OR when dragging (Command + Control)
-        let shouldMoveCursor = !isCommandPressed || (isCommandPressed && isControlPressed && isDragging)
-        
+        let shouldMoveCursor = !isClickComboActive || (isDragComboActive && isDragging)
+
         if shouldMoveCursor {
             // Apply dead zone to filter out tiny movements
             let effectiveYaw = abs(yaw) > deadZone ? yaw : 0.0
@@ -102,7 +141,7 @@ final class CursorLogic {
                     CursorEngine.moveCursor(deltaX: smoothedDeltaX, deltaY: smoothedDeltaY)
                 }
             }
-        } else if isCommandPressed && !isControlPressed {
+        } else if isClickComboActive && !isDragComboActive {
             // Command held without Control - cursor is frozen
             // Gradually decay smoothed values to zero
             smoothedDeltaX *= 0.8
@@ -111,16 +150,16 @@ final class CursorLogic {
         
         // --- CLICK/DRAG DETECTION ---
         // Only when Command is held
-        if isCommandPressed {
-            if isControlPressed {
-                // Command + Control = Drag Mode
+        if isClickComboActive {
+            if isDragComboActive {
+                // Click combo + drag extra modifiers = Drag Mode
                 handleDragMode(yaw: yaw)
             } else {
-                // Command only = Click Mode
+                // Only click combo = Click Mode
                 handleClickMode(yaw: yaw)
             }
         } else {
-            // No command - reset state
+            // No click combo - reset state
             clickState = .idle
         }
     }

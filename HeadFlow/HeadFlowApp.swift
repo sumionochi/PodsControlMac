@@ -414,6 +414,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
             if #available(macOS 14.0, *) {
                 MotionLiveState.shared.mode = next
             }
+            ModeNotificationUtil.showModeChange(to: next)
             print("HeadFlow: Cycled mode to \(next.displayName)")
         }
     
