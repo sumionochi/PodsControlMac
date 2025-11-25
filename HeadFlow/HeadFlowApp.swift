@@ -169,7 +169,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.title = "HF"
+            if #available(macOS 11.0, *) {
+                // Choose a symbol that fits HeadFlow
+                // Some ideas: "waveform.path.ecg", "cursorarrow.motionlines", "earbuds"
+                let image = NSImage(
+                    systemSymbolName: "cursorarrow.motionlines",
+                    accessibilityDescription: "HeadFlow"
+                )
+
+                image?.isTemplate = true // So it follows macOS menu bar color
+                button.image = image
+                button.imagePosition = .imageOnly
+            } else {
+                // Fallback for older macOS: keep text
+                button.title = "HF"
+            }
         }
 
         let menu = NSMenu()

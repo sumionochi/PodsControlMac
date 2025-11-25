@@ -242,7 +242,7 @@ struct PreferencesView: View {
                 
                 Spacer()
                 
-                Image(systemName: "waveform.path.ecg")
+                Image(systemName: "cursorarrow.motionlines")
                     .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(.linearGradient(
                         colors: [.accentColor, .accentColor.opacity(0.7)],
