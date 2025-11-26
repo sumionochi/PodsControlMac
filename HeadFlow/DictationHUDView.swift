@@ -64,73 +64,84 @@ struct DictationHUDView: View {
                 .fill(.ultraThinMaterial)
                 .shadow(radius: 8)
 
-            HStack(spacing: 10) {
-                // Status dot
-                Circle()
-                    .fill(statusColor.opacity(controller.isListening ? 1.0 : 0.7))
-                    .frame(width: 8, height: 8)
-                    .shadow(color: .red.opacity(controller.isListening ? 0.7 : 0.0),
-                            radius: 5)
+            VStack(spacing: 8) {
+                // Top control bar
+                HStack(spacing: 10) {
+                    // Status dot
+                    Circle()
+                        .fill(statusColor.opacity(controller.isListening ? 1.0 : 0.7))
+                        .frame(width: 8, height: 8)
+                        .shadow(color: .red.opacity(controller.isListening ? 0.7 : 0.0),
+                                radius: 5)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(statusTitle)
-                            .font(.system(size: 12, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(statusTitle)
+                                .font(.system(size: 12, weight: .semibold))
 
-                        if controller.isRequestingPermission {
-                            ProgressView()
-                                .scaleEffect(0.6)
+                            if controller.isRequestingPermission {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                            }
                         }
                     }
 
+                    Spacer()
+
+                    // Mic button
+                    Button(action: {
+                        controller.toggleMic()
+                    }) {
+                        Image(systemName: controller.isListening ? "mic.fill" : "mic")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(
+                                canToggleMic
+                                ? (controller.isListening ? Color.red : Color.primary)
+                                : Color.secondary
+                            )
+                    }
+                    .buttonStyle(.borderless)
+                    .help(
+                        !HeadFlowSettings.dictationEnabled
+                        ? "Enable dictation in HeadFlow Preferences to use the mic."
+                        : (controller.isListening ? "Stop dictation" : "Start dictation")
+                    )
+                    .disabled(!canToggleMic)
+
+                    // Close HUD
+                    Button(action: {
+                        controller.hideHUD()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Hide dictation HUD")
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                
+                // Expandable text area
+                ScrollView {
                     Text(statusSubtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(
                             (controller.errorMessage != nil || controller.permissionDenied)
                             ? AnyShapeStyle(Color.red.opacity(0.9))
                             : controller.partialText.isEmpty && controller.lastCommittedText.isEmpty
-                                ? AnyShapeStyle(.tertiary)  // ✅ Fixed: Uses hierarchical style
-                                : AnyShapeStyle(.secondary) // ✅ Fixed: Wrapped for type consistency
+                                ? AnyShapeStyle(.tertiary)
+                                : AnyShapeStyle(.secondary)
                         )
-                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                        .textSelection(.enabled)
                 }
-
-                Spacer()
-
-                // Mic button
-                Button(action: {
-                    controller.toggleMic()
-                }) {
-                    Image(systemName: controller.isListening ? "mic.fill" : "mic")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(
-                            canToggleMic
-                            ? (controller.isListening ? Color.red : Color.primary)
-                            : Color.secondary
-                        )
-                }
-                .buttonStyle(.borderless)
-                .help(
-                    !HeadFlowSettings.dictationEnabled
-                    ? "Enable dictation in HeadFlow Preferences to use the mic."
-                    : (controller.isListening ? "Stop dictation" : "Start dictation")
-                )
-                .disabled(!canToggleMic)
-
-                // Close HUD
-                Button(action: {
-                    controller.hideHUD()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .buttonStyle(.borderless)
-                .help("Hide dictation HUD")
+                .frame(maxHeight: 200) // Allow expansion up to 200pt
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
-        .padding(6) // small inset to avoid hard edges
+        .frame(minHeight: 80, maxHeight: 400)
+        .padding(6)
     }
 }
 

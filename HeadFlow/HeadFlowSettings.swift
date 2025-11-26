@@ -62,7 +62,7 @@ enum HeadFlowSettings {
 
     static let keyDictationAutoCommitDelaySeconds = "headflow.dictation.autoCommitDelaySeconds"
     static let keyDictationAutoCommitEnabled = "dictationAutoCommitEnabled"
-    
+    static let keyDictationCustomCommands = "dictationCustomCommands"
     // MARK: - Defaults
 
     static let defaultIsHeadScrollingEnabled = true
@@ -98,8 +98,10 @@ enum HeadFlowSettings {
     static let defaultCursorClickModifiersRaw: Int =
         Int(NSEvent.ModifierFlags.command.rawValue)
 
-    static let defaultCursorDragExtraModifiersRaw: Int =
-        Int(NSEvent.ModifierFlags.control.rawValue)
+    static let defaultCursorDragExtraModifiersRaw: Int = {
+        let flags: NSEvent.ModifierFlags = [.command, .control]
+        return Int(flags.rawValue)
+    }()
     
     // NEW DEFAULTS
     static let defaultGlobalCycleModesShortcutEnabled = true
@@ -389,6 +391,39 @@ enum HeadFlowSettings {
         set {
             UserDefaults.standard.set(newValue, forKey: keyGestureCooldownSeconds)
         }
+    }
+    
+    static var dictationCustomCommands: [DictationCommand] {
+        get {
+            let defaults = UserDefaults.standard
+            guard let data = defaults.data(forKey: keyDictationCustomCommands),
+                  !data.isEmpty else {
+                return defaultDictationCommands()
+            }
+            
+            do {
+                return try JSONDecoder().decode([DictationCommand].self, from: data)
+            } catch {
+                print("HeadFlowSettings: failed to decode DictationCommands: \(error)")
+                return defaultDictationCommands()
+            }
+        }
+        set {
+            do {
+                let data = try JSONEncoder().encode(newValue)
+                UserDefaults.standard.set(data, forKey: keyDictationCustomCommands)
+            } catch {
+                print("HeadFlowSettings: failed to encode DictationCommands: \(error)")
+            }
+        }
+    }
+
+    private static func defaultDictationCommands() -> [DictationCommand] {
+        return [
+            DictationCommand(trigger: "period", replacement: "."),
+            DictationCommand(trigger: "comma", replacement: ","),
+            DictationCommand(trigger: "exclamation", replacement: "!")
+        ]
     }
 
     

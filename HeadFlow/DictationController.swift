@@ -51,8 +51,6 @@ final class DictationController: NSObject, ObservableObject {
     private var lastGoodTranscription: String = ""
     private var hasCommittedThisSession: Bool = false
 
-    /// Used to detect “no new result arrived” when the silence timer fires.
-    private var recognitionSequence: Int = 0
     /// User-configurable delay before auto-commit kicks in.
     /// (Make sure HeadFlowSettings exposes this; we clamp to 0.5–10s.)
     private var autoCommitDelay: TimeInterval {
@@ -154,7 +152,6 @@ final class DictationController: NSObject, ObservableObject {
 
     func startDictation() {
         guard HeadFlowSettings.dictationEnabled else {
-            print("DictationController: dictation feature is disabled in settings")
             errorMessage = "Dictation is disabled in HeadFlow Preferences."
             return
         }
@@ -164,13 +161,11 @@ final class DictationController: NSObject, ObservableObject {
 
         guard let recognizer = speechRecognizer else {
             errorMessage = "Could not create a speech recognizer for your language."
-            print("DictationController: SFSpeechRecognizer is nil")
             return
         }
 
         guard recognizer.isAvailable else {
             errorMessage = "Speech recognition is not available right now."
-            print("DictationController: recognizer is not available")
             return
         }
 
@@ -194,7 +189,6 @@ final class DictationController: NSObject, ObservableObject {
                     } else {
                         self.permissionDenied = true
                         self.errorMessage = "HeadFlow doesn't have permission to use your microphone."
-                        print("DictationController: microphone permission denied")
                     }
                 }
             }
@@ -202,7 +196,6 @@ final class DictationController: NSObject, ObservableObject {
         case .denied, .restricted:
             permissionDenied = true
             errorMessage = "HeadFlow doesn't have permission to use your microphone.\nEnable it in System Settings → Privacy & Security → Microphone."
-            print("DictationController: microphone permission denied/restricted")
 
         @unknown default:
             errorMessage = "Unknown microphone permission state."
@@ -229,7 +222,6 @@ final class DictationController: NSObject, ObservableObject {
                     case .denied, .restricted:
                         self.permissionDenied = true
                         self.errorMessage = "Enable 'Speech Recognition' for HeadFlow in System Settings → Privacy & Security."
-                        print("DictationController: speech permission denied/restricted")
 
                     case .notDetermined:
                         break
@@ -243,7 +235,6 @@ final class DictationController: NSObject, ObservableObject {
         case .denied, .restricted:
             permissionDenied = true
             errorMessage = "HeadFlow doesn't have permission to use speech recognition."
-            print("DictationController: speech permission denied/restricted")
 
         @unknown default:
             break
@@ -256,7 +247,6 @@ final class DictationController: NSObject, ObservableObject {
         recognitionTask = nil
         recognitionRequest = nil
         lastGoodTranscription = ""
-        recognitionSequence = 0
         autoCommitWorkItem?.cancel()
         autoCommitWorkItem = nil
         hasCommittedThisSession = false
@@ -266,7 +256,6 @@ final class DictationController: NSObject, ObservableObject {
         
         if recognizer.supportsOnDeviceRecognition {
             request.requiresOnDeviceRecognition = false
-            print("DictationController: On-device recognition is available")
         }
         
         request.taskHint = .dictation
@@ -274,9 +263,6 @@ final class DictationController: NSObject, ObservableObject {
 
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
-        
-        print("DictationController: Audio format: \(recordingFormat)")
-        print("DictationController: Sample rate: \(recordingFormat.sampleRate)")
 
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
@@ -287,10 +273,8 @@ final class DictationController: NSObject, ObservableObject {
         audioEngine.prepare()
         do {
             try audioEngine.start()
-            print("DictationController: ✅ Audio engine started successfully")
         } catch {
             errorMessage = "Could not start audio engine: \(error.localizedDescription)"
-            print("DictationController: ❌ audioEngine.start() error: \(error)")
             inputNode.removeTap(onBus: 0)
             return
         }
@@ -300,29 +284,14 @@ final class DictationController: NSObject, ObservableObject {
         partialText = ""
         lastCommittedText = ""
 
-        print("DictationController: Starting recognition task with locale: \(recognizer.locale.identifier)")
-
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self = self else { return }
-            
-            print("DictationController: 📞 Recognition callback received")
-            
-            if let result = result {
-                print("DictationController: 📝 Got result - isFinal: \(result.isFinal)")
-                print("DictationController: 📝 Text: '\(result.bestTranscription.formattedString)'")
-            }
-            
-            if let error = error {
-                print("DictationController: ❌ Got error: \(error.localizedDescription)")
-            }
-            
             Task { @MainActor in
                 self.handleRecognitionCallback(result: result, error: error)
             }
         }
         
         if recognitionTask == nil {
-            print("DictationController: ❌ Failed to create recognition task!")
             errorMessage = "Failed to start speech recognition"
             stopDictation()
         } else {
@@ -335,7 +304,6 @@ final class DictationController: NSObject, ObservableObject {
     private func scheduleAutoCommitIfNeeded(_ latestText: String) {
         // NEW: Check if auto-commit is enabled
         guard HeadFlowSettings.dictationAutoCommitEnabled else {
-            print("DictationController: Auto-commit is disabled, skipping schedule")
             return
         }
         // Don’t schedule if there’s no text
@@ -350,18 +318,15 @@ final class DictationController: NSObject, ObservableObject {
         let currentSeq = autoCommitSequence
 
         let delay = autoCommitDelay   // 🔹 use clamped value
-        print("DictationController: Scheduling auto-commit in \(delay)s (seq \(currentSeq))")
 
         let work = DispatchWorkItem { [weak self] in
             Task { @MainActor in
                 guard let self = self else { return }
                 // Only the most recent scheduled task may auto-commit
                 guard currentSeq == self.autoCommitSequence else {
-                    print("DictationController: Auto-commit (seq \(currentSeq)) cancelled by newer sequence")
                     return
                 }
 
-                print("DictationController: ⏱ Auto-committing after \(delay)s of silence")
                 self.commitCurrentText()
             }
         }
@@ -376,54 +341,44 @@ final class DictationController: NSObject, ObservableObject {
         error: Error?
     ) {
         if let result = result {
-            let text = result.bestTranscription.formattedString
-            print("DictationController: Updating partial text: '\(text)'")
+            let rawText = result.bestTranscription.formattedString
             
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                lastGoodTranscription = text
-                print("DictationController: Saved as last good transcription")
+            if !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lastGoodTranscription = rawText
             }
             
-            updatePartialTranscription(text)
+            // PREVIEW shown in HUD = processed text
+            let preview = DictationTextProcessor.process(rawText)
+            updatePartialTranscription(preview)
 
+            scheduleAutoCommitIfNeeded(rawText)
+            
             if result.isFinal {
-                print("DictationController: ✅ Final result received!")
                 
-                // If we've already auto-committed / manually committed, just stop.
                 if hasCommittedThisSession {
-                    print("DictationController: Final result arrived but text was already committed, stopping without inserting again.")
                     stopDictation()
                     return
                 }
 
-                let finalText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? text
+                // Use RAW text for final processing
+                let finalRaw = !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? rawText
                     : lastGoodTranscription
-                
-                print("DictationController: Using final text: '\(finalText)'")
-                
-                if !finalText.isEmpty {
-                    handleFinalTranscription(finalText)
+                                
+                if !finalRaw.isEmpty {
+                    handleFinalTranscription(finalRaw)
                 } else {
-                    print("DictationController: ⚠️ No text to insert (both final and last good are empty)")
                 }
                 
                 stopDictation()
                 return
-            } else {
-                scheduleAutoCommitIfNeeded(text)
             }
         }
 
-        if let nsError = error as NSError? {
-            print("DictationController: ❌ Recognition error:")
-            print("  - Description: \(nsError.localizedDescription)")
-            print("  - Domain: \(nsError.domain)")
-            print("  - Code: \(nsError.code)")
 
+        if let nsError = error as NSError? {
             // No speech detected
             if nsError.domain == "kAFAssistantErrorDomain", nsError.code == 1110 {
-                print("DictationController: No speech detected, stopping gracefully")
                 stopDictation()
                 return
             }
@@ -432,11 +387,8 @@ final class DictationController: NSObject, ObservableObject {
             if (nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 203) ||
                (nsError.domain == "kLSRErrorDomain" && nsError.code == 301) {
 
-                print("DictationController: Recognition was cancelled")
-
                 // Only commit on cancel if we *haven't* already committed
                 if !hasCommittedThisSession, !lastGoodTranscription.isEmpty {
-                    print("DictationController: Using last good transcription before cancellation")
                     handleFinalTranscription(lastGoodTranscription)
                 }
                 
@@ -447,60 +399,6 @@ final class DictationController: NSObject, ObservableObject {
             errorMessage = nsError.localizedDescription
             stopDictation()
         }
-    }
-
-    /// Schedule / reset the silence timer for auto-commit
-    private func scheduleAutoCommit() {
-        autoCommitSequence &+= 1
-        let current = autoCommitSequence
-        let delay = HeadFlowSettings.dictationAutoCommitDelaySeconds
-
-        print("DictationController: Scheduling auto-commit in \(delay)s (seq \(current))")
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self = self else { return }
-            guard self.autoCommitSequence == current else {
-                // New speech arrived, older timer is obsolete
-                return
-            }
-            guard self.isListening else { return }
-
-            print("DictationController: ⏱ Auto-committing after \(delay)s of silence")
-
-            let finalText = self.partialText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !finalText.isEmpty {
-                self.handleFinalTranscription(finalText)
-            } else if !self.lastGoodTranscription.isEmpty {
-                self.handleFinalTranscription(self.lastGoodTranscription)
-            }
-            self.stopDictation()
-        }
-    }
-
-    /// Called when the silence timer fires; only commits if no newer result arrived.
-    private func autoCommitIfStillIdle(sequence: Int) {
-        guard isListening else {
-            print("DictationController: auto-commit skipped (not listening)")
-            return
-        }
-        guard sequence == recognitionSequence else {
-            print("DictationController: auto-commit skipped (newer result arrived)")
-            return
-        }
-
-        let primary = partialText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallback = lastGoodTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let textToCommit = !primary.isEmpty ? primary : fallback
-
-        guard !textToCommit.isEmpty else {
-            print("DictationController: auto-commit timer fired but no text to commit")
-            return
-        }
-
-        print("DictationController: ⏱ Auto-committing after \(autoCommitDelay)s of silence")
-        handleFinalTranscription(textToCommit)
-        stopDictation()
     }
 
     func stopDictation() {
@@ -529,23 +427,21 @@ final class DictationController: NSObject, ObservableObject {
     }
     
     /// Manually commit the current partial text and stop dictation (mic button)
+    /// Manually commit the current text and stop dictation (mic button)
     func commitCurrentText() {
         guard isListening else { return }
         
-        let primary = partialText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallback = lastGoodTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
-        let textToCommit = !primary.isEmpty ? primary : fallback
+        // Always commit RAW text, not the HUD preview
+        let raw = lastGoodTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        if !textToCommit.isEmpty {
-            print("DictationController: Manually committing: '\(textToCommit)'")
-            handleFinalTranscription(textToCommit)
+        if !raw.isEmpty {
+            handleFinalTranscription(raw)
         } else {
-            print("DictationController: No text to commit")
+            print("DictationController: No RAW text to commit")
         }
         
         stopDictation()
     }
-
     // MARK: - Transcription helpers
 
     /// For live partial updates from the speech recognizer
@@ -555,29 +451,16 @@ final class DictationController: NSObject, ObservableObject {
 
     /// Called when the speech recognizer produces a final, stable chunk of text
     func handleFinalTranscription(_ rawText: String) {
-        print("DictationController: Processing final transcription: '\(rawText)'")
-        
         let processed = DictationTextProcessor.process(rawText)
         guard !processed.isEmpty else {
-            print("DictationController: ⚠️ Processed text is empty")
             return
         }
         
-        // If we've already committed this session, don't insert again
-        if hasCommittedThisSession {
-            print("DictationController: ⚠️ Already committed this session, skipping duplicate insert")
-            return
-        }
-        
-        hasCommittedThisSession = true   // ⬅️ mark session as committed
-        
-        print("DictationController: Processed text: '\(processed)'")
-        print("DictationController: Attempting to insert text...")
+        hasCommittedThisSession = true
         
         insertTextIntoFocusedField(processed)
         commit(text: processed)
         
-        print("DictationController: ✅ Text committed successfully")
     }
 
     /// For manual commits (if we want to show what just got inserted)
@@ -593,19 +476,14 @@ final class DictationController: NSObject, ObservableObject {
     private func insertTextIntoFocusedField(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            print("DictationController: ⚠️ Cannot insert empty text")
             return
         }
-
-        print("DictationController: Inserting text via TextInjectionEngine: '\(trimmed)'")
-        print("DictationController: Text length: \(trimmed.count) characters")
 
         // We still need Accessibility permission for CGEvents.
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
         let hasAccess = AXIsProcessTrustedWithOptions(options as CFDictionary)
 
         if !hasAccess {
-            print("DictationController: ❌ Missing Accessibility permission!")
             errorMessage = """
             HeadFlow needs Accessibility permission to type for you.
             System Settings → Privacy & Security → Accessibility → enable “HeadFlow”.
@@ -613,7 +491,6 @@ final class DictationController: NSObject, ObservableObject {
             return
         }
 
-        print("DictationController: ✅ Has Accessibility permission, typing now…")
         TextInjectionEngine.typeText(trimmed)
     }
 

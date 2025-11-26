@@ -20,6 +20,12 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyGestureTiltThresholdDegrees)
     private var gestureTiltThresholdDegrees: Double = HeadFlowSettings.defaultGestureTiltThresholdDegrees
     
+    @AppStorage(HeadFlowSettings.keyGlobalDictationHUDShortcutEnabled)
+    private var globalDictationHUDShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalDictationHUDShortcutEnabled
+
+    @AppStorage(HeadFlowSettings.keyGlobalDictationMicShortcutEnabled)
+    private var globalDictationMicShortcutEnabled: Bool = HeadFlowSettings.defaultGlobalDictationMicShortcutEnabled
+    
     @AppStorage(HeadFlowSettings.keyGestureCooldownSeconds)
     private var gestureCooldownSeconds: Double = HeadFlowSettings.defaultGestureCooldownSeconds
     
@@ -125,7 +131,10 @@ struct PreferencesView: View {
     @State private var createProfileShortcut = HeadFlowSettings.shortcutCreateProfile
     @State private var prefsShortcut = HeadFlowSettings.shortcutPreferences
     @State private var calibrateShortcut = HeadFlowSettings.shortcutCalibrate
-    @State private var cycleModesShortcut = HeadFlowSettings.shortcutCycleModes // <--- New
+    @State private var cycleModesShortcut = HeadFlowSettings.shortcutCycleModes
+    @State private var dictationCommands: [DictationCommand] = HeadFlowSettings.dictationCustomCommands
+    @State private var dictationHUDShortcut = HeadFlowSettings.shortcutDictationHUD
+    @State private var dictationMicShortcut = HeadFlowSettings.shortcutDictationMic
     // Design system constants
     private let spacing: CGFloat = 20
     private let cardRadius: CGFloat = 12
@@ -224,6 +233,9 @@ struct PreferencesView: View {
                 scrollModeRaw = ScrollMode.continuous.rawValue
             }
             gestureSettings = HeadFlowSettings.gestureSettings
+            dictationCommands = HeadFlowSettings.dictationCustomCommands
+            dictationHUDShortcut = HeadFlowSettings.shortcutDictationHUD
+            dictationMicShortcut = HeadFlowSettings.shortcutDictationMic
         }
         .onChange(of: toggleShortcut) { _, newValue in
             HeadFlowSettings.shortcutToggle = newValue
@@ -238,6 +250,12 @@ struct PreferencesView: View {
             HeadFlowSettings.shortcutCalibrate = newValue
         }
         .onChange(of: cycleModesShortcut) { _, newValue in HeadFlowSettings.shortcutCycleModes = newValue }
+        .onChange(of: dictationHUDShortcut) { _, newValue in
+            HeadFlowSettings.shortcutDictationHUD = newValue
+        }
+        .onChange(of: dictationMicShortcut) { _, newValue in
+            HeadFlowSettings.shortcutDictationMic = newValue
+        }
     }
     
     // MARK: - Header
@@ -361,7 +379,7 @@ struct PreferencesView: View {
             // Actions
             HStack(spacing: 12) {
                 Button(action: resetGlobalTuningToDefaults) {
-                    Label("Reset to Defaults", systemImage: "arrow.counterclockwise")
+                    Label("Reset Settings to Defaults", systemImage: "arrow.counterclockwise")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .buttonStyle(.borderedProminent)
@@ -895,6 +913,37 @@ struct PreferencesView: View {
                     }
                 }
                 
+                settingsCard(
+                    title: "Voice Commands",
+                    icon: "text.bubble"
+                ) {
+                    Text("Teach HeadFlow custom phrases that trigger actions when you say them")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    if dictationCommands.isEmpty {
+                        Text("No custom commands yet")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                    } else {
+                        ForEach(dictationCommands) { command in
+                            dictationCommandRow(command: command)
+                        }
+                    }
+                    
+                    Button(action: addDictationCommand) {
+                        Label("Add Voice Command", systemImage: "plus.circle.fill")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                
                 Spacer(minLength: spacing)
             }
             .padding(spacing)
@@ -1279,6 +1328,35 @@ struct PreferencesView: View {
                         title: "Calibrate Head Position",
                         enabled: $globalCalibrateShortcutEnabled,
                         shortcut: $calibrateShortcut
+                    )
+                    
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    // Dictation section header
+                    HStack(spacing: 8) {
+                        Image(systemName: "mic.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.purple)
+                        
+                        Text("Dictation")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
+
+                    shortcutRow(
+                        icon: "bubble.left.and.bubble.right",
+                        title: "Toggle Dictation HUD",
+                        enabled: $globalDictationHUDShortcutEnabled,
+                        shortcut: $dictationHUDShortcut
+                    )
+
+                    shortcutRow(
+                        icon: "mic.fill",
+                        title: "Start/Stop Dictation",
+                        enabled: $globalDictationMicShortcutEnabled,
+                        shortcut: $dictationMicShortcut
                     )
                     // New Shortcut Row
 
@@ -1712,6 +1790,81 @@ struct PreferencesView: View {
         if let c { parts.append("Case \(c)%") }
         
         return parts.joined(separator: "  •  ")
+    }
+    
+    private func dictationCommandRow(command: DictationCommand) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("When I say:")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                TextField("Trigger phrase", text: bindingForCommandTrigger(command))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
+            }
+            
+            Image(systemName: "arrow.right")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Type this:")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                TextField("Replacement text", text: bindingForCommandReplacement(command))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
+            }
+            
+            Button(role: .destructive, action: {
+                removeDictationCommand(command)
+            }) {
+                Image(systemName: "trash")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.borderless)
+            .help("Remove this command")
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func bindingForCommandTrigger(_ command: DictationCommand) -> Binding<String> {
+        Binding<String>(
+            get: {
+                dictationCommands.first(where: { $0.id == command.id })?.trigger ?? ""
+            },
+            set: { newValue in
+                if let index = dictationCommands.firstIndex(where: { $0.id == command.id }) {
+                    dictationCommands[index].trigger = newValue
+                    HeadFlowSettings.dictationCustomCommands = dictationCommands
+                }
+            }
+        )
+    }
+
+    private func bindingForCommandReplacement(_ command: DictationCommand) -> Binding<String> {
+        Binding<String>(
+            get: {
+                dictationCommands.first(where: { $0.id == command.id })?.replacement ?? ""
+            },
+            set: { newValue in
+                if let index = dictationCommands.firstIndex(where: { $0.id == command.id }) {
+                    dictationCommands[index].replacement = newValue
+                    HeadFlowSettings.dictationCustomCommands = dictationCommands
+                }
+            }
+        )
+    }
+
+    private func addDictationCommand() {
+        let new = DictationCommand(trigger: "say this", replacement: "types this")
+        dictationCommands.append(new)
+        HeadFlowSettings.dictationCustomCommands = dictationCommands
+    }
+
+    private func removeDictationCommand(_ command: DictationCommand) {
+        dictationCommands.removeAll { $0.id == command.id }
+        HeadFlowSettings.dictationCustomCommands = dictationCommands
     }
 }
 
