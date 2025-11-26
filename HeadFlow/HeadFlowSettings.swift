@@ -50,6 +50,17 @@ enum HeadFlowSettings {
 
     static let keyCursorClickModifiersRaw       = "cursorClickModifiersRaw"
     static let keyCursorDragExtraModifiersRaw   = "cursorDragExtraModifiersRaw"
+    
+    static let keyDictationEnabled = "dictationEnabled"
+    static let keyDictationPausesHeadFlow   = "dictationPausesHeadFlow"
+    static let keyGlobalDictationHUDShortcutEnabled = "globalDictationHUDShortcutEnabled"
+    static let keyGlobalDictationMicShortcutEnabled = "globalDictationMicShortcutEnabled"
+
+    static let keyShortcutDictationHUD = "shortcutDictationHUD"
+    static let keyShortcutDictationMic = "shortcutDictationMic"
+    // MARK: - Dictation
+
+    static let keyDictationAutoCommitDelaySeconds = "headflow.dictation.autoCommitDelaySeconds"
 
     
     // MARK: - Defaults
@@ -82,6 +93,7 @@ enum HeadFlowSettings {
     static let defaultCursorSingleClickYawDeg: Double = 10.0
     static let defaultCursorDoubleClickYawDeg: Double = 20.0
     static let defaultCursorClickCooldown: Double     = 0.5
+    static let defaultDictationAutoCommitDelaySeconds: Double = 1.5
 
     static let defaultCursorClickModifiersRaw: Int =
         Int(NSEvent.ModifierFlags.command.rawValue)
@@ -116,6 +128,24 @@ enum HeadFlowSettings {
     static let defaultCycleModesShortcut = KeyboardShortcut(
         key: ".",
         modifiers: [.command, .option, .control]   // ⌃⌥⌘.
+    )
+    
+    static let defaultDictationEnabled = true
+    static let defaultDictationPausesHeadFlow = true
+
+    static let defaultGlobalDictationHUDShortcutEnabled = true
+    static let defaultGlobalDictationMicShortcutEnabled = true
+
+    // HUD toggle: ⌃⌥⌘ ;
+    static let defaultDictationHUDShortcut = KeyboardShortcut(
+        key: ";",
+        modifiers: [.command, .option, .control]
+    )
+
+    // Mic start/stop: ⌃⌥⌘ '
+    static let defaultDictationMicShortcut = KeyboardShortcut(
+        key: "'",
+        modifiers: [.command, .option, .control]
     )
 
     // MARK: - Register defaults
@@ -155,6 +185,10 @@ enum HeadFlowSettings {
             keyCursorClickModifiersRaw:       defaultCursorClickModifiersRaw,
             keyCursorDragExtraModifiersRaw:   defaultCursorDragExtraModifiersRaw,
             
+            keyDictationEnabled:                 defaultDictationEnabled,
+            keyGlobalDictationHUDShortcutEnabled: defaultGlobalDictationHUDShortcutEnabled,
+            keyGlobalDictationMicShortcutEnabled: defaultGlobalDictationMicShortcutEnabled,
+            keyDictationPausesHeadFlow: defaultDictationPausesHeadFlow,
             // Register new keys
             keyGlobalCycleModesShortcutEnabled: defaultGlobalCycleModesShortcutEnabled
         ])
@@ -181,6 +215,20 @@ enum HeadFlowSettings {
             UserDefaults.standard.set(newValue, forKey: keyScrollSensitivity)
         }
     }
+    
+    static var dictationAutoCommitDelaySeconds: Double {
+        get {
+            let value = UserDefaults.standard.double(forKey: keyDictationAutoCommitDelaySeconds)
+            // .double(forKey:) returns 0 when not set — treat that as “use default”.
+            return value == 0 ? defaultDictationAutoCommitDelaySeconds : value
+        }
+        set {
+            // Clamp to a sensible range: 0.5–10 seconds of silence
+            let clamped = max(0.5, min(newValue, 10.0))
+            UserDefaults.standard.set(clamped, forKey: keyDictationAutoCommitDelaySeconds)
+        }
+    }
+
 
     static var baseLinesValue: Double {
         get {
@@ -219,6 +267,48 @@ enum HeadFlowSettings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: keyScrollMode)
+        }
+    }
+    
+    // MARK: - Dictation
+
+    static var dictationEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyDictationEnabled) as? Bool)
+            ?? defaultDictationEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyDictationEnabled)
+        }
+    }
+
+    static var dictationPausesHeadFlow: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyDictationPausesHeadFlow) as? Bool)
+            ?? defaultDictationPausesHeadFlow
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyDictationPausesHeadFlow)
+        }
+    }
+
+    static var globalDictationHUDShortcutEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyGlobalDictationHUDShortcutEnabled) as? Bool)
+            ?? defaultGlobalDictationHUDShortcutEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGlobalDictationHUDShortcutEnabled)
+        }
+    }
+
+    static var globalDictationMicShortcutEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyGlobalDictationMicShortcutEnabled) as? Bool)
+            ?? defaultGlobalDictationMicShortcutEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyGlobalDictationMicShortcutEnabled)
         }
     }
 
@@ -545,6 +635,18 @@ enum HeadFlowSettings {
         if let data = try? JSONEncoder().encode(shortcut) {
             UserDefaults.standard.set(data, forKey: key)
         }
+    }
+    
+    static var shortcutDictationHUD: KeyboardShortcut {
+        get { loadShortcut(forKey: keyShortcutDictationHUD,
+                           default: defaultDictationHUDShortcut) }
+        set { saveShortcut(newValue, forKey: keyShortcutDictationHUD) }
+    }
+
+    static var shortcutDictationMic: KeyboardShortcut {
+        get { loadShortcut(forKey: keyShortcutDictationMic,
+                           default: defaultDictationMicShortcut) }
+        set { saveShortcut(newValue, forKey: keyShortcutDictationMic) }
     }
 
     static var shortcutToggle: KeyboardShortcut {

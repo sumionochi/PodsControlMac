@@ -17,6 +17,7 @@ final class MotionLiveState: ObservableObject {
         case pausedTyping
         case pausedModifier
         case pausedManualScroll  // paused due to manual scroll detection
+        case pausedDictation
     }
 
     /// Current tilt relative to neutral, in degrees (clamped to ±maxTilt).

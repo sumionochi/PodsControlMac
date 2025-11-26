@@ -13,6 +13,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         case typing
         case modifier
         case manualScroll
+        case dictation
     }
     
     private let manager = CMHeadphoneMotionManager()
@@ -151,6 +152,8 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
                 live.status = .pausedModifier
             case .manualScroll:
                 live.status = .pausedManualScroll
+            case .dictation:
+                live.status = .pausedDictation
             }
             live.velocityLinesPerSecond = 0.0
         }
@@ -209,6 +212,13 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             // Also respect per-app enable flag.
             guard config.isEnabled else {
                 hardStopScrolling()
+                return
+            }
+        
+            if HeadFlowSettings.dictationPausesHeadFlow,
+               DictationRuntimeState.shared.isDictating {
+                hardStopScrolling()
+                publishPausedStatus(.dictation)
                 return
             }
             

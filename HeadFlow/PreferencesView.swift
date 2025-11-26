@@ -29,6 +29,9 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyScrollSensitivity)
     private var scrollSensitivity: Double = HeadFlowSettings.defaultScrollSensitivity
     
+    @AppStorage(HeadFlowSettings.keyDictationPausesHeadFlow)
+    private var dictationPausesHeadFlow: Bool = HeadFlowSettings.defaultDictationPausesHeadFlow
+    
     @AppStorage(HeadFlowSettings.keyBaseLines)
     private var baseLines: Double = HeadFlowSettings.defaultBaseLines
     
@@ -38,6 +41,9 @@ struct PreferencesView: View {
     
     @AppStorage(HeadFlowSettings.keyMaxTiltDegrees)
     private var maxTiltDegrees: Double = HeadFlowSettings.defaultMaxTiltDegrees
+    
+    @AppStorage(HeadFlowSettings.keyDictationAutoCommitDelaySeconds)
+    private var dictationAutoCommitDelaySeconds: Double = HeadFlowSettings.defaultDictationAutoCommitDelaySeconds
     
     @AppStorage(HeadFlowSettings.keyAccelerationFactor)
     private var accelerationFactor: Double = HeadFlowSettings.defaultAccelerationFactor
@@ -833,6 +839,12 @@ struct PreferencesView: View {
                     }
                     .toggleStyle(.switch)
                     
+                    Toggle(isOn: $dictationPausesHeadFlow) {
+                        Label("Pause while dictating", systemImage: "mic")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .toggleStyle(.switch)
+                    
                     Divider()
                         .padding(.vertical, 4)
                     
@@ -851,6 +863,27 @@ struct PreferencesView: View {
                             format: "%.2fs"
                         )
                     }
+                }
+                
+                settingsCard(
+                    title: "Dictation",
+                    icon: "mic"
+                ) {
+                    // …your existing toggles + shortcut recorders…
+
+                    sliderSetting(
+                        title: "Auto-commit silence delay",
+                        icon: "timer",
+                        value: $dictationAutoCommitDelaySeconds,
+                        range: 0.5...10.0,
+                        step: 0.5,
+                        format: "%.1fs"
+                    )
+
+                    Text("When you stop speaking for this long, HeadFlow will insert the last phrase into the focused text field.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 26)
                 }
                 
                 Spacer(minLength: spacing)
@@ -1631,6 +1664,8 @@ struct PreferencesView: View {
             return ("Paused – Shift", .yellow)
         case .pausedManualScroll:
             return ("Paused – Manual Scroll", .yellow)
+        case .pausedDictation:
+                return ("Paused – Dictation", .yellow)
         }
     }
     

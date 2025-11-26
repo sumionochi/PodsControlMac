@@ -10,15 +10,12 @@ struct WelcomeView: View {
     }
     
     @State private var currentPage: Page = .intro
-    // Assuming PermissionManager is available from the previous file
     @ObservedObject private var permissionManager = PermissionManager.shared
     
-    // Timer to poll for permission changes if user changes them in System Settings
     private let timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
-            // Elegant gradient background
             LinearGradient(
                 colors: [
                     Color(nsColor: .windowBackgroundColor),
@@ -64,11 +61,8 @@ struct WelcomeView: View {
     }
     
     func finishSetup() {
-        // 1. Mark as seen
         HeadFlowSettings.hasSeenWelcome = true
-        // 2. Notify AppDelegate to start services
         NotificationCenter.default.post(name: .headFlowSetupCompleted, object: nil)
-        // 3. Close window
         NSApp.keyWindow?.performClose(nil)
     }
 }
@@ -81,7 +75,6 @@ struct IntroContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 
-                // --- Header + Hero Icon ---
                 HStack(alignment: .top, spacing: 20) {
                     ZStack {
                         Circle()
@@ -111,13 +104,12 @@ struct IntroContentView: View {
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
 
-                        Text("Hands-free scrolling for reading, coding, and browsing with your AirPods or Beats.")
+                        Text("Control your Mac hands-free using head movements with your AirPods or Beats.")
                             .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .lineSpacing(2)
 
-                        // Use case chips
                         HStack(spacing: 10) {
                             TagCapsule(systemImage: "book", text: "Reading")
                             TagCapsule(systemImage: "chevron.left.slash.chevron.right", text: "Coding")
@@ -131,7 +123,6 @@ struct IntroContentView: View {
 
                 Divider().padding(.vertical, 4)
 
-                // --- Features Section ---
                 VStack(alignment: .leading, spacing: 20) {
                     Text("What HeadFlow can do")
                         .font(.system(size: 18, weight: .semibold))
@@ -144,13 +135,13 @@ struct IntroContentView: View {
                             systemImage: "arrow.up.and.down.circle"
                         )
                         FeatureRow(
-                            title: "Per-app profiles",
-                            text: "Make Safari slow and relaxed, Xcode faster, and Notion ultra-precise.",
-                            systemImage: "square.grid.2x2"
+                            title: "Voice dictation mode",
+                            text: "Speak naturally and see your words appear instantly in any text field.",
+                            systemImage: "mic.circle"
                         )
                         FeatureRow(
-                            title: "Smart pause & safety",
-                            text: "Pauses automatically when you move the mouse or type.",
+                            title: "Smart auto-pause",
+                            text: "Automatically pauses when you move the mouse or type on the keyboard.",
                             systemImage: "pause.circle"
                         )
                         FeatureRow(
@@ -169,13 +160,15 @@ struct IntroContentView: View {
                 
                 Spacer(minLength: 20)
                 
-                // --- Next Button ---
                 HStack {
                     Spacer()
                     Button(action: onNext) {
-                        Text("Next: Setup Permissions")
-                            .font(.system(size: 14, weight: .semibold))
-                            .frame(minWidth: 140)
+                        HStack(spacing: 6) {
+                            Text("Get Started")
+                            Image(systemName: "arrow.right")
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(minWidth: 140)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -187,36 +180,53 @@ struct IntroContentView: View {
     }
 }
 
-// MARK: - 2. Permissions View
+// MARK: - 2. Permissions View (IMPROVED)
 struct PermissionsContentView: View {
     @ObservedObject var pm = PermissionManager.shared
     var onBack: () -> Void
     var onFinish: () -> Void
     
+    // Track which permissions have been attempted
+    @State private var hasAttemptedMic = false
+    @State private var hasAttemptedSpeech = false
+    
+    var allPermissionsGranted: Bool {
+        pm.isInputMonitoringTrusted &&
+        pm.motionStatus == .authorized &&
+        pm.micStatus == .authorized &&
+        pm.speechStatus == .authorized
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             
-            // Header with Back Button
             HStack(alignment: .top) {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .medium))
-                        .contentShape(Rectangle()) // Increases hit area
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain) // Removes standard button background
+                .buttonStyle(.plain)
                 .padding(.top, 6)
                 .padding(.trailing, 8)
-                // Add hover effect or color if desired
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Grant Permissions")
+                    Text("Quick Setup")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                     
-                    Text("To function correctly, HeadFlow needs access to Input Monitoring (to detect keyboard shortcuts) and Motion data (from your headphones).")
+                    Text("HeadFlow needs a few permissions to work. Click 'Allow' on each prompt—it only takes a moment!")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+            
+            // Progress indicator
+            if !allPermissionsGranted {
+                ProgressBanner(
+                    granted: countGrantedPermissions(),
+                    total: 4
+                )
             }
             
             Divider()
@@ -224,24 +234,62 @@ struct PermissionsContentView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     
-                    // 1. Input Monitoring Permission (changed from Accessibility)
+                    // 1. Input Monitoring
                     PermissionRow(
-                        title: "Input Monitoring",
-                        description: "Required to detect keyboard shortcuts and control scrolling.",
+                        number: 1,
+                        title: "Keyboard Shortcuts",
+                        description: "Lets you use keyboard shortcuts to control HeadFlow.",
                         icon: "keyboard",
                         isGranted: pm.isInputMonitoringTrusted,
+                        hasAttempted: true,
                         onRequest: { pm.requestInputMonitoring() },
                         onOpenSettings: { pm.openInputMonitoringSettings() }
                     )
                     
-                    // 2. Motion Permission
+                    // 2. Headphone Motion
                     PermissionRow(
-                        title: "Headphone Motion",
-                        description: "Required to read head tracking data from AirPods/Beats.",
+                        number: 2,
+                        title: "Head Tracking",
+                        description: "Reads head movements from your AirPods or Beats headphones.",
                         icon: "airpodspro",
                         isGranted: pm.motionStatus == .authorized,
+                        hasAttempted: true,
                         onRequest: { pm.requestMotion() },
                         onOpenSettings: { pm.openMotionSettings() }
+                    )
+                    
+                    // 3. Microphone
+                    PermissionRow(
+                        number: 3,
+                        title: "Microphone Access",
+                        description: "Required for voice dictation mode to capture your speech.",
+                        icon: "mic",
+                        isGranted: pm.micStatus == .authorized,
+                        hasAttempted: hasAttemptedMic || pm.micStatus != .notDetermined,
+                        onRequest: {
+                            hasAttemptedMic = true
+                            pm.requestMicrophone()
+                        },
+                        onOpenSettings: {
+                            pm.openMicrophoneSettings()
+                        }
+                    )
+                    
+                    // 4. Speech Recognition
+                    PermissionRow(
+                        number: 4,
+                        title: "Speech Recognition",
+                        description: "Converts your voice to text using Apple's speech engine.",
+                        icon: "waveform",
+                        isGranted: pm.speechStatus == .authorized,
+                        hasAttempted: hasAttemptedSpeech || pm.speechStatus != .notDetermined,
+                        onRequest: {
+                            hasAttemptedSpeech = true
+                            pm.requestSpeechRecognition()
+                        },
+                        onOpenSettings: {
+                            pm.openSpeechSettings()
+                        }
                     )
                 }
                 .padding(.vertical, 10)
@@ -251,21 +299,46 @@ struct PermissionsContentView: View {
             
             Divider()
             
-            // Footer Action
             HStack {
-                // Troubleshooting link
-                Button("Troubleshooting…") {
-                    pm.openInputMonitoringSettings()
+                if !allPermissionsGranted {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle")
+                                .font(.caption)
+                            Text("Having trouble?")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(.secondary)
+                        
+                        Button("Open System Settings") {
+                            pm.openMicrophoneSettings()
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                    }
                 }
-                .buttonStyle(.link)
-                .font(.footnote)
                 
                 Spacer()
                 
+                if allPermissionsGranted {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("All Set!")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
                 Button(action: onFinish) {
-                    Text("Start HeadFlow")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(minWidth: 120)
+                    HStack(spacing: 6) {
+                        Text(allPermissionsGranted ? "Start Using HeadFlow" : "Continue Anyway")
+                        if allPermissionsGranted {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(minWidth: 160)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
@@ -275,23 +348,94 @@ struct PermissionsContentView: View {
         }
         .padding(32)
     }
+    
+    private func countGrantedPermissions() -> Int {
+        var count = 0
+        if pm.isInputMonitoringTrusted { count += 1 }
+        if pm.motionStatus == .authorized { count += 1 }
+        if pm.micStatus == .authorized { count += 1 }
+        if pm.speechStatus == .authorized { count += 1 }
+        return count
+    }
 }
 
 // MARK: - UI Components
 
+struct ProgressBanner: View {
+    let granted: Int
+    let total: Int
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 3)
+                    .frame(width: 32, height: 32)
+                
+                Circle()
+                    .trim(from: 0, to: CGFloat(granted) / CGFloat(total))
+                    .stroke(Color.accentColor, lineWidth: 3)
+                    .frame(width: 32, height: 32)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.spring(), value: granted)
+                
+                Text("\(granted)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(granted) of \(total) permissions granted")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                
+                Text("Click 'Allow' when macOS asks for permission")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.accentColor.opacity(0.08))
+        )
+    }
+}
+
 struct PermissionRow: View {
+    let number: Int
     let title: String
     let description: String
     let icon: String
     let isGranted: Bool
+    let hasAttempted: Bool
     let onRequest: () -> Void
     let onOpenSettings: () -> Void
     
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
-            // Icon
+            // Number badge
             ZStack {
                 Circle()
+                    .fill(isGranted ? Color.green : Color.accentColor)
+                    .frame(width: 28, height: 28)
+                
+                if isGranted {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                } else {
+                    Text("\(number)")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            
+            // Icon
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
                     .fill(isGranted ? Color.green.opacity(0.1) : Color.secondary.opacity(0.1))
                     .frame(width: 40, height: 40)
                 
@@ -315,29 +459,22 @@ struct PermissionRow: View {
             
             Spacer()
             
-            // Status / Actions
+            // Action button
             if isGranted {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Allowed")
-                }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.green)
-                .padding(.top, 8)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+                    .padding(.top, 8)
             } else {
-                VStack(alignment: .trailing, spacing: 6) {
-                    Button("Allow") {
-                        onRequest()
-                    }
-                    .controlSize(.regular)
-                    
-                    Button("Open Settings") {
-                        onOpenSettings()
-                    }
-                    .font(.caption)
-                    .buttonStyle(.link)
-                    .foregroundStyle(Color.accentColor)
+                Button {
+                    onRequest()
+                } label: {
+                    Text("Allow")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(minWidth: 70)
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
             }
         }
         .padding(16)
@@ -348,9 +485,9 @@ struct PermissionRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(isGranted ? Color.green.opacity(0.3) : Color.clear, lineWidth: 1)
+                .stroke(isGranted ? Color.green.opacity(0.3) : Color.clear, lineWidth: 1.5)
         )
-        .opacity(isGranted ? 0.8 : 1.0) // Fade out slightly if granted
+        .opacity(isGranted ? 0.75 : 1.0)
     }
 }
 

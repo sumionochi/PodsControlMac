@@ -3,13 +3,18 @@ import Cocoa
 import CoreMotion
 import ApplicationServices
 import AppKit
+import AVFoundation
+import Speech
+
 
 protocol GlobalShortcutHandler: AnyObject {
     func handleGlobalToggleHeadFlow()
     func handleGlobalCreateProfile()
     func handleGlobalOpenPreferences()
     func handleGlobalCalibrate()
-    func handleGlobalCycleModes() // <--- NEW
+    func handleGlobalCycleModes()
+    func handleGlobalToggleDictationHUD()
+    func handleGlobalToggleDictationMic()
 }
 
 @main
@@ -19,6 +24,116 @@ struct HeadFlowApp: App {
     var body: some Scene {
         Settings {
             EmptyView()
+        }
+    }
+}
+
+class PermissionDebugger {
+    static func diagnose() {
+        print("========================================")
+        print("PERMISSION DIAGNOSIS")
+        print("========================================")
+        
+        // 1. Check Bundle ID
+        let bundleID = Bundle.main.bundleIdentifier ?? "UNKNOWN"
+        print("📦 Bundle ID: \(bundleID)")
+        
+        // 2. Check Info.plist keys
+        print("\n📄 Info.plist Keys:")
+        
+        if let micDesc = Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String {
+            print("✅ NSMicrophoneUsageDescription: \"\(micDesc)\"")
+        } else {
+            print("❌ NSMicrophoneUsageDescription: MISSING!")
+            print("   → Add this to Info.plist:")
+            print("   <key>NSMicrophoneUsageDescription</key>")
+            print("   <string>HeadFlow needs microphone access.</string>")
+        }
+        
+        if let speechDesc = Bundle.main.object(forInfoDictionaryKey: "NSSpeechRecognitionUsageDescription") as? String {
+            print("✅ NSSpeechRecognitionUsageDescription: \"\(speechDesc)\"")
+        } else {
+            print("❌ NSSpeechRecognitionUsageDescription: MISSING!")
+            print("   → Add this to Info.plist:")
+            print("   <key>NSSpeechRecognitionUsageDescription</key>")
+            print("   <string>HeadFlow needs speech recognition.</string>")
+        }
+        
+        if let motionDesc = Bundle.main.object(forInfoDictionaryKey: "NSMotionUsageDescription") as? String {
+            print("✅ NSMotionUsageDescription: \"\(motionDesc)\"")
+        } else {
+            print("⚠️  NSMotionUsageDescription: MISSING!")
+        }
+        
+        // 3. Check app type
+        print("\n🏃 App Type:")
+        if let isUIElement = Bundle.main.object(forInfoDictionaryKey: "LSUIElement") as? Bool {
+            if isUIElement {
+                print("❌ LSUIElement: true (Background Agent)")
+                print("   → This prevents the app from appearing in System Settings!")
+                print("   → Set to false or remove this key")
+            } else {
+                print("✅ LSUIElement: false (Regular App)")
+            }
+        } else {
+            print("✅ LSUIElement: Not set (Regular App)")
+        }
+        
+        // 4. Check current permission status
+        print("\n🔐 Current Permission Status:")
+        
+        let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        print("Microphone: \(statusString(micStatus)) (raw: \(micStatus.rawValue))")
+        
+        let speechStatus = SFSpeechRecognizer.authorizationStatus()
+        print("Speech Recognition: \(speechStatusString(speechStatus)) (raw: \(speechStatus.rawValue))")
+        
+        // 5. Check code signing
+        print("\n✍️  Code Signing:")
+        if let signingIdentity = Bundle.main.object(forInfoDictionaryKey: "CFBundleSignature") {
+            print("✅ Signed: \(signingIdentity)")
+        } else {
+            print("⚠️  Signing info not available")
+        }
+        
+        // 6. Recommendations
+        print("\n💡 Next Steps:")
+        
+        if Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") == nil {
+            print("1. ❌ Add NSMicrophoneUsageDescription to Info.plist")
+            print("   This is REQUIRED for permission dialog to appear")
+        }
+        
+        if micStatus == .denied {
+            print("2. ⚠️  Microphone is currently DENIED")
+            print("   → Reset with: tccutil reset Microphone \(bundleID)")
+            print("   → Or manually enable in: System Settings → Privacy & Security → Microphone")
+        }
+        
+        if micStatus == .notDetermined {
+            print("2. ✅ Ready to request microphone permission")
+        }
+        
+        print("\n========================================")
+    }
+    
+    private static func statusString(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "Not Determined (0)"
+        case .restricted: return "Restricted (1)"
+        case .denied: return "Denied (2)"
+        case .authorized: return "Authorized (3)"
+        @unknown default: return "Unknown (\(status.rawValue))"
+        }
+    }
+    
+    private static func speechStatusString(_ status: SFSpeechRecognizerAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "Not Determined (0)"
+        case .restricted: return "Restricted (1)"
+        case .denied: return "Denied (2)"
+        case .authorized: return "Authorized (3)"
+        @unknown default: return "Unknown (\(status.rawValue))"
         }
     }
 }
@@ -77,6 +192,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         
         // 2. Build menu bar UI immediately so the app feels alive
         setupMenu()
+        
+        print("Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+            
+        // Check if Info.plist keys exist
+        if let micDesc = Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") {
+            print("✅ Microphone description found: \(micDesc)")
+        } else {
+            print("❌ ERROR: NSMicrophoneUsageDescription MISSING!")
+        }
+        
+        if let speechDesc = Bundle.main.object(forInfoDictionaryKey: "NSSpeechRecognitionUsageDescription") {
+            print("✅ Speech description found: \(speechDesc)")
+        } else {
+            print("❌ ERROR: NSSpeechRecognitionUsageDescription MISSING!")
+        }
+        
+        // Test permission request
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            let status = AVCaptureDevice.authorizationStatus(for: .audio)
+            print("Current status: \(status.rawValue)")
+            
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                print("Permission result: \(granted)")
+                print("New status: \(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
+            }
+        }
         
         // 3. Observe "setup completed" from the Welcome / permission flow
         NotificationCenter.default.addObserver(
@@ -431,6 +572,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
             ModeNotificationUtil.showModeChange(to: next)
             print("HeadFlow: Cycled mode to \(next.displayName)")
         }
+    
+    func handleGlobalToggleDictationHUD() {
+        Task { @MainActor in
+            DictationController.shared.toggleHUD()
+        }
+    }
+
+    func handleGlobalToggleDictationMic() {
+        Task { @MainActor in
+            if !DictationController.shared.isHUDVisible {
+                DictationController.shared.showHUD()
+            }
+            DictationController.shared.toggleMic()
+        }
+    }
     
     // MARK: - Welcome window
 

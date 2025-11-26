@@ -99,6 +99,26 @@ final class GlobalShortcutMonitor {
             }
             return
         }
+        
+        // NEW: Toggle dictation HUD
+        if HeadFlowSettings.globalDictationHUDShortcutEnabled,
+           HeadFlowSettings.shortcutDictationHUD.matches(event: event) {
+
+            DispatchQueue.main.async {
+                handler.handleGlobalToggleDictationHUD()
+            }
+            return
+        }
+
+        // NEW: Start/stop dictation mic
+        if HeadFlowSettings.globalDictationMicShortcutEnabled,
+           HeadFlowSettings.shortcutDictationMic.matches(event: event) {
+
+            DispatchQueue.main.async {
+                handler.handleGlobalToggleDictationMic()
+            }
+            return
+        }
 
     }
 
