@@ -333,6 +333,11 @@ final class DictationController: NSObject, ObservableObject {
     // MARK: - Auto-commit helper
 
     private func scheduleAutoCommitIfNeeded(_ latestText: String) {
+        // NEW: Check if auto-commit is enabled
+        guard HeadFlowSettings.dictationAutoCommitEnabled else {
+            print("DictationController: Auto-commit is disabled, skipping schedule")
+            return
+        }
         // Don’t schedule if there’s no text
         let trimmed = latestText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

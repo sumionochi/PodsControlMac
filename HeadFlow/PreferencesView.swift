@@ -32,6 +32,9 @@ struct PreferencesView: View {
     @AppStorage(HeadFlowSettings.keyDictationPausesHeadFlow)
     private var dictationPausesHeadFlow: Bool = HeadFlowSettings.defaultDictationPausesHeadFlow
     
+    @AppStorage(HeadFlowSettings.keyDictationAutoCommitEnabled)
+    private var dictationAutoCommitEnabled: Bool = HeadFlowSettings.defaultDictationAutoCommitEnabled
+    
     @AppStorage(HeadFlowSettings.keyBaseLines)
     private var baseLines: Double = HeadFlowSettings.defaultBaseLines
     
@@ -869,21 +872,27 @@ struct PreferencesView: View {
                     title: "Dictation",
                     icon: "mic"
                 ) {
-                    // …your existing toggles + shortcut recorders…
+                    Toggle(isOn: $dictationAutoCommitEnabled) {
+                        Label("Auto-commit after silence", systemImage: "timer.circle")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .toggleStyle(.switch)
+                    
+                    if dictationAutoCommitEnabled {
+                        sliderSetting(
+                            title: "Auto-commit silence delay",
+                            icon: "timer",
+                            value: $dictationAutoCommitDelaySeconds,
+                            range: 0.5...10.0,
+                            step: 0.5,
+                            format: "%.1fs"
+                        )
 
-                    sliderSetting(
-                        title: "Auto-commit silence delay",
-                        icon: "timer",
-                        value: $dictationAutoCommitDelaySeconds,
-                        range: 0.5...10.0,
-                        step: 0.5,
-                        format: "%.1fs"
-                    )
-
-                    Text("When you stop speaking for this long, HeadFlow will insert the last phrase into the focused text field.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .padding(.leading, 26)
+                        Text("When you stop speaking for this long, HeadFlow will insert the last phrase into the focused text field.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .padding(.leading, 26)
+                    }
                 }
                 
                 Spacer(minLength: spacing)

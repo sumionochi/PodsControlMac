@@ -61,7 +61,7 @@ enum HeadFlowSettings {
     // MARK: - Dictation
 
     static let keyDictationAutoCommitDelaySeconds = "headflow.dictation.autoCommitDelaySeconds"
-
+    static let keyDictationAutoCommitEnabled = "dictationAutoCommitEnabled"
     
     // MARK: - Defaults
 
@@ -147,6 +147,8 @@ enum HeadFlowSettings {
         key: "'",
         modifiers: [.command, .option, .control]
     )
+    
+    static let defaultDictationAutoCommitEnabled = true
 
     // MARK: - Register defaults
 
@@ -189,6 +191,7 @@ enum HeadFlowSettings {
             keyGlobalDictationHUDShortcutEnabled: defaultGlobalDictationHUDShortcutEnabled,
             keyGlobalDictationMicShortcutEnabled: defaultGlobalDictationMicShortcutEnabled,
             keyDictationPausesHeadFlow: defaultDictationPausesHeadFlow,
+            keyDictationAutoCommitEnabled: defaultDictationAutoCommitEnabled,
             // Register new keys
             keyGlobalCycleModesShortcutEnabled: defaultGlobalCycleModesShortcutEnabled
         ])
@@ -257,6 +260,16 @@ enum HeadFlowSettings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: keyMaxTiltDegrees)
+        }
+    }
+    
+    static var dictationAutoCommitEnabled: Bool {
+        get {
+            (UserDefaults.standard.object(forKey: keyDictationAutoCommitEnabled) as? Bool)
+            ?? defaultDictationAutoCommitEnabled
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: keyDictationAutoCommitEnabled)
         }
     }
 
