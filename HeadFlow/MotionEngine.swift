@@ -161,6 +161,12 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
 
     /// Called whenever new motion data arrives (on our background queue).
     private func handle(motion: CMDeviceMotion) {
+            // 🔐 License gate: if trial expired and not unlocked, do nothing.
+            if !AccessGate.hasFullAccess {
+                hardStopScrolling()
+                return
+            }
+        
             let pitchRad = motion.attitude.pitch
             let pitchDeg = pitchRad * 180.0 / .pi
             

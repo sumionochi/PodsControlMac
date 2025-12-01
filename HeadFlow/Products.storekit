@@ -1,0 +1,69 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "1205FBF1",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "5A13FFC5",
+      "localizations" : [
+        {
+          "description" : "Unlock all features of PodsControlMac forever.",
+          "displayName" : "Lifetime Access",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Déverrouillez toutes les fonctionnalités de PodsControlMac pour toujours.",
+          "displayName" : "Accès à vie",
+          "locale" : "fr"
+        },
+        {
+          "description" : "Schalte alle Funktionen von PodsControlMac dauerhaft frei.",
+          "displayName" : "Lebenslanger Zugriff",
+          "locale" : "de"
+        },
+        {
+          "description" : "Unlock all features of PodsControlMac forever.",
+          "displayName" : "Lifetime Access",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "podscontrolmac.lifetime",
+      "referenceName" : "Lifetime Unlock",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

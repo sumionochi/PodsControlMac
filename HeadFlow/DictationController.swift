@@ -2,7 +2,7 @@
 import Foundation
 import SwiftUI
 import AppKit
-import Speech
+@preconcurrency import Speech
 import AVFoundation
 
 /// Controls the dictation HUD + start/stop of dictation,
@@ -155,6 +155,16 @@ final class DictationController: NSObject, ObservableObject {
             errorMessage = "Dictation is disabled in HeadFlow Preferences."
             return
         }
+        
+        // 🔐 License gate: block dictation if trial is over and not unlocked.
+        guard AccessGate.hasFullAccess else {
+            errorMessage = """
+            Your free trial has ended.
+            Go to the License tab in Preferences to unlock PodsControlMac forever.
+            """
+            print("DictationController: blocked by license gate (no access)")
+            return
+        }
 
         errorMessage = nil
         permissionDenied = false
@@ -180,15 +190,22 @@ final class DictationController: NSObject, ObservableObject {
         case .notDetermined:
             isRequestingPermission = true
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.isRequestingPermission = false
 
                     if granted {
-                        self.checkSpeechPermissionAndStart(recognizer: recognizer)
+                        // Create a new recognizer instance on the main actor
+                        // to avoid capturing the non-Sendable parameter
+                        if let newRecognizer = SFSpeechRecognizer(locale: Locale.current) {
+                            self.checkSpeechPermissionAndStart(recognizer: newRecognizer)
+                        } else {
+                            self.errorMessage = "Could not create a speech recognizer."
+                        }
                     } else {
                         self.permissionDenied = true
                         self.errorMessage = "HeadFlow doesn't have permission to use your microphone."
+                        print("DictationController: microphone permission denied")
                     }
                 }
             }
@@ -196,6 +213,7 @@ final class DictationController: NSObject, ObservableObject {
         case .denied, .restricted:
             permissionDenied = true
             errorMessage = "HeadFlow doesn't have permission to use your microphone.\nEnable it in System Settings → Privacy & Security → Microphone."
+            print("DictationController: microphone permission denied/restricted")
 
         @unknown default:
             errorMessage = "Unknown microphone permission state."

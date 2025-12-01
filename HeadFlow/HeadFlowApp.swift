@@ -190,6 +190,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
         // 1. Basic setup (defaults)
         HeadFlowSettings.registerDefaults()
         
+        PurchaseManager.shared.start()
+        
         // 2. Build menu bar UI immediately so the app feels alive
         setupMenu()
         
@@ -315,7 +317,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, GlobalShortc
                 // Some ideas: "waveform.path.ecg", "cursorarrow.motionlines", "earbuds"
                 let image = NSImage(
                     systemSymbolName: "cursorarrow.motionlines",
-                    accessibilityDescription: "HeadFlow"
+                    accessibilityDescription: "PodsControlMac"
                 )
 
                 image?.isTemplate = true // So it follows macOS menu bar color

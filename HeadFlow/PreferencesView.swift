@@ -124,6 +124,7 @@ struct PreferencesView: View {
     }
     
     // Local UI-only state
+    @StateObject private var purchaseManager = PurchaseManager.shared
     @State private var selectedTab: Tab = .overview
     @State private var lastStatusCheck: Date? = nil
     @State private var gestureSettings: GestureSettings = HeadFlowSettings.gestureSettings
@@ -152,6 +153,7 @@ struct PreferencesView: View {
         case apps = "Apps"
         case advanced = "Advanced"
         case shortcuts = "Shortcuts"
+        case license = "License"
         
         var id: String { rawValue }
         
@@ -163,6 +165,7 @@ struct PreferencesView: View {
             case .apps: return "square.grid.2x2"
             case .advanced: return "slider.horizontal.3"
             case .shortcuts: return "keyboard"
+            case .license: return "lock.open"
             }
         }
     }
@@ -213,7 +216,14 @@ struct PreferencesView: View {
                         Label(Tab.shortcuts.rawValue, systemImage: Tab.shortcuts.icon)
                     }
                     .tag(Tab.shortcuts)
+                LicenseSectionView()
+                    .tabItem {
+                        Label(Tab.license.rawValue, systemImage: Tab.license.icon)
+                    }
+                    .tag(Tab.license)
+
             }
+            .environmentObject(purchaseManager)
             .padding(.top, -8)
         }
         .frame(
@@ -277,7 +287,7 @@ struct PreferencesView: View {
                         endPoint: .bottomTrailing
                     ))
                 
-                Text("HeadFlow")
+                Text("PodsControlMac")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                 
             }
@@ -314,13 +324,12 @@ struct PreferencesView: View {
     private var overviewTab: some View {
         ScrollView {
             VStack(spacing: spacing) {
-                // Live response card
+                TrialStatusBanner {
+                    selectedTab = .license
+                }
+
                 liveResponseCard
-                
-                // System status card
                 systemStatusCard
-                
-                // Headphone device card
                 Spacer(minLength: spacing)
             }
             .padding(spacing)
@@ -672,8 +681,9 @@ struct PreferencesView: View {
                         Label("Enable head scrolling", systemImage: "play.circle")
                             .font(.system(size: 13, weight: .medium))
                     }
+                    .disabled(!AccessGate.hasFullAccess)
                     .toggleStyle(.switch)
-                    
+
                     Divider()
                         .padding(.vertical, 4)
                     
