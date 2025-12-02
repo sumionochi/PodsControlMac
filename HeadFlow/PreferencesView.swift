@@ -10,7 +10,6 @@ struct PreferencesView: View {
     @ObservedObject private var status: HeadFlowStatus
     
     // Live telemetry for the "Live response" panel
-    @ObservedObject private var live = MotionLiveState.shared
     @ObservedObject private var headphones = HeadphoneDeviceState.shared
     
     // Per-app profiles
@@ -126,7 +125,6 @@ struct PreferencesView: View {
     // Local UI-only state
     @StateObject private var purchaseManager = PurchaseManager.shared
     @State private var selectedTab: Tab = .overview
-    @State private var lastStatusCheck: Date? = nil
     @State private var gestureSettings: GestureSettings = HeadFlowSettings.gestureSettings
     @State private var toggleShortcut = HeadFlowSettings.shortcutToggle
     @State private var createProfileShortcut = HeadFlowSettings.shortcutCreateProfile
@@ -141,7 +139,6 @@ struct PreferencesView: View {
     private let cardRadius: CGFloat = 12
     private let sectionSpacing: CGFloat = 16
     private let iconSize: CGFloat = 16
-    private let statusWidth: CGFloat = 120
     
     
     
@@ -234,19 +231,6 @@ struct PreferencesView: View {
             idealHeight: 600,
             maxHeight: .infinity
         )
-        .onAppear {
-            status.refreshAll()
-            lastStatusCheck = Date()
-            
-            let validModes = Set(ScrollMode.allCases.map { $0.rawValue })
-            if !validModes.contains(scrollModeRaw) {
-                scrollModeRaw = ScrollMode.continuous.rawValue
-            }
-            gestureSettings = HeadFlowSettings.gestureSettings
-            dictationCommands = HeadFlowSettings.dictationCustomCommands
-            dictationHUDShortcut = HeadFlowSettings.shortcutDictationHUD
-            dictationMicShortcut = HeadFlowSettings.shortcutDictationMic
-        }
         .onChange(of: toggleShortcut) { _, newValue in
             HeadFlowSettings.shortcutToggle = newValue
         }
@@ -301,22 +285,16 @@ struct PreferencesView: View {
     
     private var statusIndicator: some View {
         HStack(spacing: 8) {
-            let info = liveStatusInfo()
-            
             Circle()
-                .fill(info.color)
+                .fill(status.headphones == .connected ? Color.green : Color.red)
                 .frame(width: 8, height: 8)
-                .shadow(color: info.color.opacity(0.5), radius: 3)
             
-            Text(info.label)
+            Text(status.headphones == .connected ? "Connected" : "Disconnected")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: statusWidth + 40, alignment: .leading)
         }
-        .frame(width: statusWidth)
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        
     }
     
     // MARK: - Overview Tab
@@ -327,203 +305,13 @@ struct PreferencesView: View {
                 TrialStatusBanner {
                     selectedTab = .license
                 }
-
-                liveResponseCard
+                
                 systemStatusCard
+                
                 Spacer(minLength: spacing)
             }
             .padding(spacing)
         }
-    }
-    
-    private var liveResponseCard: some View {
-        
-        return VStack(alignment: .leading, spacing: sectionSpacing) {
-            // Header
-            HStack(spacing: 12) {
-                Image(systemName: "waveform")
-                    .font(.system(size: iconSize, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 20)
-                
-                Text("Live Response")
-                    .font(.system(size: 17, weight: .semibold))
-                
-                Spacer()
-                                
-            }
-            
-            Divider()
-            
-            // Tilt visualizer
-            tiltVisualizerView
-                .padding(.vertical, 8)
-            
-            // Metrics grid with fixed widths
-            HStack(spacing: 12) {
-                metricCard(
-                    icon: "angle",
-                    title: "Tilt",
-                    value: formattedTilt(live.tiltPercent),
-                    color: .blue
-                )
-                
-                metricCard(
-                    icon: "speedometer",
-                    title: "Velocity",
-                    value: formattedVelocity(live.velocityLinesPerSecond),
-                    color: .green
-                )
-                
-                metricCard(
-                    icon: "gearshape.2",
-                    title: "Mode",
-                    value: live.mode.displayName,
-                    color: .orange
-                )
-            }
-            
-            Divider()
-            
-            // Actions
-            HStack(spacing: 12) {
-                Button(action: resetGlobalTuningToDefaults) {
-                    Label("Reset Settings to Defaults", systemImage: "arrow.counterclockwise")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                
-                Spacer()
-                
-                Text("Real-time head tracking telemetry")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .padding(spacing)
-        .background(
-            RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
-        )
-    }
-    
-    private var tiltVisualizerView: some View {
-        VStack(spacing: 12) {
-            // Visual track
-            GeometryReader { geo in
-                let width = geo.size.width
-                let dotRadius: CGFloat = 10
-                let halfWidth = width / 2 - dotRadius
-                
-                let clampedPercent = max(-100.0, min(100.0, live.tiltPercent))
-                let offsetX = CGFloat(clampedPercent / 100.0) * halfWidth
-                
-                let dzFraction = max(
-                    0.0,
-                    min(1.0, maxTiltDegrees > 0
-                        ? deadZoneDegrees / maxTiltDegrees
-                        : 0.0)
-                )
-                let dzWidth = width * CGFloat(dzFraction)
-                
-                ZStack {
-                    // Background track
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.1))
-                    
-                    // Dead zone indicator
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.15))
-                        .frame(width: dzWidth)
-                    
-                    // Center line
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.3))
-                        .frame(width: 1.5)
-                    
-                    // Active region fill
-                    if offsetX != 0 {
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: offsetX > 0 ?
-                                    [Color.clear, Color.accentColor.opacity(0.25)] :
-                                    [Color.accentColor.opacity(0.25), Color.clear],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: abs(offsetX))
-                            .offset(x: offsetX > 0 ? 0 : offsetX)
-                    }
-                    
-                    // Moving dot indicator
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: dotRadius * 2, height: dotRadius * 2)
-                        .shadow(color: Color.accentColor.opacity(0.4), radius: 4)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: 2)
-                        )
-                        .offset(x: offsetX)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: live.tiltPercent)
-                }
-            }
-            .frame(height: 48)
-            
-            // Labels
-            HStack {
-                Label("Down", systemImage: "arrow.down")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                
-                Spacer()
-                
-                Text("Neutral")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                
-                Spacer()
-                
-                Label("Up", systemImage: "arrow.up")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .labelStyle(.trailingIcon)
-            }
-        }
-        .padding(.horizontal, 4)
-    }
-    
-    private func metricCard(icon: String, title: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(color)
-                    .frame(width: 14)
-                
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(color.opacity(0.06))
-        )
     }
     
     private var systemStatusCard: some View {
@@ -541,7 +329,6 @@ struct PreferencesView: View {
             Divider()
             
             VStack(spacing: 10) {
-                enhancedHeadphoneStatusRow()
                 
                 statusRow(
                     icon: "figure.walk.motion",
@@ -563,7 +350,6 @@ struct PreferencesView: View {
             HStack(spacing: 12) {
                 Button(action: {
                     status.refreshAll()
-                    lastStatusCheck = Date()
                 }) {
                     Label("Refresh Status", systemImage: "arrow.clockwise")
                         .font(.system(size: 12, weight: .medium))
@@ -581,12 +367,6 @@ struct PreferencesView: View {
                 .controlSize(.small)
                 
                 Spacer()
-                
-                if let last = lastStatusCheck {
-                    Text("Updated \(formattedTime(last))")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
             }
         }
         .padding(spacing)
@@ -618,48 +398,6 @@ struct PreferencesView: View {
             Image(systemName: status ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .font(.system(size: 16))
                 .foregroundStyle(status ? .green : .red)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.secondary.opacity(0.04))
-        )
-    }
-    
-    private func enhancedHeadphoneStatusRow() -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: status.trackingDeviceSymbolName)
-                .font(.system(size: iconSize))
-                .foregroundStyle(status.headphones == .connected ? .blue : .secondary)
-                .frame(width: 20)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(headphoneDeviceTitle())
-                    .font(.system(size: 13, weight: .medium))
-                
-                HStack(spacing: 6) {
-                    Text(status.headphoneDescription)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    
-                    if let batteryText = headphoneBatterySummary() {
-                        Text("•")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                        
-                        Text(batteryText)
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.green)
-                    }
-                }
-            }
-            
-            Spacer()
-            
-            Image(systemName: status.headphones == .connected ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 16))
-                .foregroundStyle(status.headphones == .connected ? .green : .red)
         }
         .padding(12)
         .background(
@@ -1743,37 +1481,6 @@ struct PreferencesView: View {
         return formatter.string(from: date)
     }
     
-    private func liveStatusInfo() -> (label: String, color: Color) {
-        switch live.status {
-        case .idle:
-            return ("Idle", .secondary)
-        case .tracking:
-            return ("Tracking", .green)
-        case .disconnected:
-            return ("Disconnected", .red)
-        case .needsSetup:
-            return ("Needs Setup", .orange)
-        case .pausedPointer:
-            return ("Paused – Mouse", .yellow)
-        case .pausedTyping:
-            return ("Paused – Typing", .yellow)
-        case .pausedModifier:
-            return ("Paused – Shift", .yellow)
-        case .pausedManualScroll:
-            return ("Paused – Manual Scroll", .yellow)
-        case .pausedDictation:
-                return ("Paused – Dictation", .yellow)
-        }
-    }
-    
-    private func formattedTilt(_ percent: Double) -> String {
-        String(format: "%+.1f%%", percent)
-    }
-    
-    private func formattedVelocity(_ linesPerSecond: Double) -> String {
-        String(format: "%.1f l/s", linesPerSecond)
-    }
-    
     private func headphoneIconName() -> String {
         return status.trackingDeviceSymbolName
     }
@@ -1783,23 +1490,6 @@ struct PreferencesView: View {
             return "Not connected"
         }
         return status.headphoneDescription
-    }
-    
-    private func headphoneBatterySummary() -> String? {
-        let l = headphones.batteryLeft
-        let r = headphones.batteryRight
-        let c = headphones.batteryCase
-        
-        if l == nil, r == nil, c == nil {
-            return nil
-        }
-        
-        var parts: [String] = []
-        if let l { parts.append("L \(l)%") }
-        if let r { parts.append("R \(r)%") }
-        if let c { parts.append("Case \(c)%") }
-        
-        return parts.joined(separator: "  •  ")
     }
     
     private func dictationCommandRow(command: DictationCommand) -> some View {

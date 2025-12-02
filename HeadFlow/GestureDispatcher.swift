@@ -14,6 +14,9 @@ final class GestureDispatcher {
 
     func handle(gesture: GestureType, context: GestureContext) {
         let settings = HeadFlowSettings.gestureSettings
+        
+        // Nothing configured at all → bail immediately.
+        guard !settings.mappings.isEmpty else { return }
 
         // Find mapping for this (context, gesture).
         guard let mapping = settings.mappings.first(where: {
@@ -118,7 +121,6 @@ final class GestureDispatcher {
 
     private func toggleHeadScrollingEnabled() {
         HeadFlowSettings.isHeadScrollingEnabled.toggle()
-        print("GestureDispatcher: isHeadScrollingEnabled = \(HeadFlowSettings.isHeadScrollingEnabled)")
     }
 
     private func togglePerAppProfileForCurrentApp() {

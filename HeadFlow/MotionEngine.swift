@@ -18,7 +18,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
     
     private let manager = CMHeadphoneMotionManager()
     private let queue = OperationQueue()
-
+    private var uiPauseActive = false
     // Last measured pitch (degrees) and neutral baseline.
     private var lastPitchDeg: Double?
     private var neutralPitchDeg: Double?
@@ -130,33 +130,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         lastAutoReadTime = nil
         autoReadCurrentSpeed = 0.0
         autoReadAccumulator = 0.0
-
-        DispatchQueue.main.async {
-            let live = MotionLiveState.shared
-            live.velocityLinesPerSecond = 0.0
-            live.tiltPercent = 0.0
-            live.tiltDegrees = 0.0
-            live.status = .idle
-        }
-    }
-    
-    private func publishPausedStatus(_ reason: PauseReason) {
-        DispatchQueue.main.async {
-            let live = MotionLiveState.shared
-            switch reason {
-            case .pointer:
-                live.status = .pausedPointer
-            case .typing:
-                live.status = .pausedTyping
-            case .modifier:
-                live.status = .pausedModifier
-            case .manualScroll:
-                live.status = .pausedManualScroll
-            case .dictation:
-                live.status = .pausedDictation
-            }
-            live.velocityLinesPerSecond = 0.0
-        }
     }
 
     /// Called whenever new motion data arrives (on our background queue).
@@ -198,17 +171,32 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             if deltaYaw < -180 { deltaYaw += 360 }
             // ------------------------------------
 
-            // Resolve effective config for current app.
-            let bundleID = DispatchQueue.main.sync {
-                NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-            }
+            // Resolve effective config for current app using cached status
+            let bundleID = HeadFlowStatus.shared.frontmostBundleIdentifier
             let config = ProfileManager.shared.effectiveConfig(for: bundleID)
-            let mode = config.scrollMode // <--- Moved up for safety check use
-        
+            let mode = config.scrollMode
+
             // 🔹 Always run gesture detection, even when HeadFlow scrolling is OFF.
             if mode != .cursor {
                 detectGestures(motion: motion, deltaPitch: delta)
             }
+
+            // 🔹 If HeadFlow itself is frontmost and we're in a scrolling mode,
+            let isHeadFlowFrontmost = (bundleID == Bundle.main.bundleIdentifier)
+
+            // If HeadFlow itself is frontmost and we're in a scrolling mode,
+            // do NOT generate scroll events or live UI updates for tilt/velocity.
+            // (Prevents Preferences UI from animating with your head.)
+            if isHeadFlowFrontmost && mode != .cursor {
+                if !uiPauseActive {
+                    uiPauseActive = true
+                    hardStopScrolling()
+                }
+                return
+            } else {
+                uiPauseActive = false
+            }
+
             // Global ON/OFF must be respected first.
             guard HeadFlowSettings.isHeadScrollingEnabled else {
                 hardStopScrolling()
@@ -224,14 +212,12 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             if HeadFlowSettings.dictationPausesHeadFlow,
                DictationRuntimeState.shared.isDictating {
                 hardStopScrolling()
-                publishPausedStatus(.dictation)
                 return
             }
             
             // Smart pause: if user recently scrolled manually, back off briefly.
             if ManualScrollPauseController.shared.isPausedForManualScroll {
                 hardStopScrolling()
-                publishPausedStatus(.manualScroll)
                 return
             }
             
@@ -239,7 +225,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             if HeadFlowSettings.shiftToPauseEnabled,
                NSEvent.modifierFlags.contains(.shift) {
                 hardStopScrolling()
-                publishPausedStatus(.modifier)
                 return
             }
 
@@ -249,7 +234,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
                HeadFlowSettings.pauseWhilePointerActive,
                PointerActivityMonitor.shared.isRecentlyActive(threshold: 0.25) {
                 hardStopScrolling()
-                publishPausedStatus(.pointer)
                 return
             }
 
@@ -257,7 +241,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             if HeadFlowSettings.pauseWhileTyping,
                TypingActivityMonitor.shared.isRecentlyActive(threshold: 0.40) {
                 hardStopScrolling()
-                publishPausedStatus(.typing)
                 return
             }
 
@@ -308,25 +291,8 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
                 
                 // Pass to cursor logic for processing
                 cursorLogic.update(yaw: deltaYaw, pitch: delta, roll: rollDeg)
-                
-                // Update live state for cursor mode
-                DispatchQueue.main.async {
-                    let live = MotionLiveState.shared
-                    live.mode = .cursor
-                    live.status = .tracking
-                    live.tiltDegrees = deltaYaw  // Show yaw angle for click feedback
-                    live.tiltPercent = 0.0
-                    live.velocityLinesPerSecond = 0.0
-                }
             // ---------------------
             }
-
-            // After updating scroll, publish live state for the UI.
-            publishLiveState(
-                tiltDeltaDegrees: delta,
-                maxTiltDegrees: maxTiltDeg,
-                mode: mode
-            )
         }
 
     // MARK: - Continuous mode (smoothed)
@@ -495,55 +461,6 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
         ScrollEngine.scrollDown(lines: linesToScroll)
     }
 
-    /// Publish live tilt / velocity / status for the Preferences UI.
-    private func publishLiveState(
-        tiltDeltaDegrees delta: Double,
-        maxTiltDegrees: Double,
-        mode: ScrollMode
-    ) {
-        // Clamp tilt to max range for display.
-        let clampedDelta = max(-maxTiltDegrees, min(maxTiltDegrees, delta))
-        let tiltPercent: Double
-        if maxTiltDegrees > 0 {
-            tiltPercent = (clampedDelta / maxTiltDegrees) * 100.0
-        } else {
-            tiltPercent = 0.0
-        }
-
-        // Velocity source depends on mode.
-        let velocityLps: Double
-        switch mode {
-        case .continuous:
-            velocityLps = continuousCurrentSpeed
-        case .autoRead:
-            velocityLps = -autoReadCurrentSpeed
-        case .cursor:
-            velocityLps = 0.0
-        }
-
-        // Decide status for UI based on current app / permissions.
-        let statusModel = HeadFlowStatus.shared
-        let status: MotionLiveState.Status
-
-        if !HeadFlowSettings.isHeadScrollingEnabled {
-            status = .idle
-        } else if statusModel.accessibility != .enabled || statusModel.motionAuth != .authorized {
-            status = .needsSetup
-        } else if statusModel.headphones != .connected {
-            status = .disconnected
-        } else {
-            status = .tracking
-        }
-
-        DispatchQueue.main.async {
-            let live = MotionLiveState.shared
-            live.tiltDegrees = clampedDelta
-            live.tiltPercent = tiltPercent
-            live.velocityLinesPerSecond = velocityLps
-            live.mode = mode
-            live.status = status
-        }
-    }
 
     /// Manually re-calibrate the neutral head position.
     func calibrateNeutral() {

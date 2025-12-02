@@ -10,22 +10,9 @@
 		CB7ECCD72ECB66F00058A029 /* PodsControlMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PodsControlMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		CB0CC26F2EDD389500C9572B /* Exceptions for "HeadFlow" folder in "PodsControlMac" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = CB7ECCD62ECB66F00058A029 /* PodsControlMac */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		CB7ECCD92ECB66F00058A029 /* HeadFlow */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				CB0CC26F2EDD389500C9572B /* Exceptions for "HeadFlow" folder in "PodsControlMac" target */,
-			);
 			path = HeadFlow;
 			sourceTree = "<group>";
 		};

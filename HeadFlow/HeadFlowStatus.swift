@@ -208,6 +208,13 @@ final class HeadFlowStatus: ObservableObject {
         }
     }
     
+    var isHeadFlowFrontmost: Bool {
+        guard let currentID = frontmostBundleIdentifier,
+              let myID = Bundle.main.bundleIdentifier else { return false }
+        return currentID == myID
+    }
+
+    
     // MARK: - Device summary & icon
 
     /// Human-readable summary for Preferences / live panel.

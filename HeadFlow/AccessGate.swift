@@ -1,11 +1,7 @@
 // AccessGate.swift
 import Foundation
 
-/// Lightweight helper used from low-level code (MotionEngine, etc.)
-/// to know if the user currently has access to core features.
-///
-/// It reads the SAME keys as PurchaseManager, so everything stays in sync,
-/// but it does NOT depend on @MainActor / StoreKit.
+//AccessGate.swift
 enum AccessGate {
     private static let keyLifetimeUnlocked = "podscontrolmac.lifetimeUnlocked"
     private static let keyTrialStartDate  = "podscontrolmac.trialStartDate"
