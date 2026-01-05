@@ -1,5 +1,14 @@
 # PodsControlMac (HeadFlow)
-### Hands-free scrolling & cursor control for macOS using your AirPods / Beats
+
+### Cursor control, Hands-free scrolling, on-device dictation and soo much more for macOS using your AirPods / Beats
+
+[Github Repo Link](https://github.com/sumionochi/PodsControlMac)
+
+[1 min Demo Video on Mux](https://player.mux.com/4DQJQ8Z200VqHNem55ljpNwu7aEQUp5wf1poAgd0056hs)
+
+![Problems](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/7ypefp5uc5xpwyyct7il.png)
+
+![Solution](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/vrdaxfz0nvxqp1ko1ndp.png)
 
 PodsControlMac (codename: **HeadFlow**) is a macOS utility that turns your head movements into system-wide input:
 
@@ -29,6 +38,50 @@ Built with **Core Motion**, **CGEvent**, and **SwiftUI**, it’s designed to fee
 12. [Key Code Components](#key-code-components)
 13. [Building & Running](#building--running)
 14. [Future Ideas](#future-ideas)
+
+---
+
+## Building & Running
+
+1. **Clone / open project**
+
+   ```bash
+   git clone <this-repo-url>
+   cd PodsControlMac
+   open PodsControlMac.xcodeproj   # or .xcworkspace if using SwiftPM/CocoaPods
+   ```
+
+2. **Open in Xcode** and select the **PodsControlMac** app target.
+
+3. **Signing & Capabilities**
+
+   * Set your Team and bundle identifier.
+   * Ensure capabilities for:
+
+     * Motion / Health (for CMHeadphoneMotionManager)
+     * Hardened runtime (if applicable)
+
+4. **Build & Run**
+
+   * Run the app on your local Mac.
+
+5. **Grant Permissions on first run**
+
+   * When prompted:
+
+     * Enable **Accessibility** for PodsControlMac in *System Settings → Privacy & Security → Accessibility*
+     * Allow **Motion & Fitness** access for head tracking
+     * Accept any prompts for input monitoring (if shown)
+
+6. **Connect headphones & start**
+
+   * Put on compatible AirPods / Beats
+   * Ensure they show as your audio output device
+   * Open PodsControlMac from the menu bar
+   * Use the global shortcut to start/stop HeadFlow, or toggle from the UI
+   * Use the calibrate shortcut to set your neutral head position
+  * How much manual scrolling vs head scrolling you’re doing
+  * Which apps you use HeadFlow with the most
 
 ---
 
@@ -607,59 +660,3 @@ Mode changes display a **macOS HUD-style overlay** (`ModeNotificationUtil` + `Mo
   * `CursorModifierPicker`
   * `LicenseSectionView`, `TrialStatusBanner`
   * `ModeNotificationUtil`, `ModeHUDWindow`, `ModeHUDView`
-
----
-
-## Building & Running
-
-1. **Clone / open project**
-
-   ```bash
-   git clone <this-repo-url>
-   cd PodsControlMac
-   open PodsControlMac.xcodeproj   # or .xcworkspace if using SwiftPM/CocoaPods
-   ```
-
-2. **Open in Xcode** and select the **PodsControlMac** app target.
-
-3. **Signing & Capabilities**
-
-   * Set your Team and bundle identifier.
-   * Ensure capabilities for:
-
-     * Motion / Health (for CMHeadphoneMotionManager)
-     * Hardened runtime (if applicable)
-
-4. **Build & Run**
-
-   * Run the app on your local Mac.
-
-5. **Grant Permissions on first run**
-
-   * When prompted:
-
-     * Enable **Accessibility** for PodsControlMac in *System Settings → Privacy & Security → Accessibility*
-     * Allow **Motion & Fitness** access for head tracking
-     * Accept any prompts for input monitoring (if shown)
-
-6. **Connect headphones & start**
-
-   * Put on compatible AirPods / Beats
-   * Ensure they show as your audio output device
-   * Open PodsControlMac from the menu bar
-   * Use the global shortcut to start/stop HeadFlow, or toggle from the UI
-   * Use the calibrate shortcut to set your neutral head position
-
----
-
-## Future Ideas
-
-A few natural extensions that align with this architecture:
-
-* **Profile auto-switching hints** based on application usage patterns
-* **Per-display cursor tuning** (larger head movements for large external displays)
-* **Preset banks** (e.g. “Reading Mode”, “Coding Mode”, “Design Mode”)
-* **On-device analytics** for:
-
-  * How much manual scrolling vs head scrolling you’re doing
-  * Which apps you use HeadFlow with the most
