@@ -663,6 +663,3 @@ A few natural extensions that align with this architecture:
 
   * How much manual scrolling vs head scrolling you’re doing
   * Which apps you use HeadFlow with the most
- 
-```
-```
