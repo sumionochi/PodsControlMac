@@ -435,12 +435,12 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             effectiveMagnitude = (magnitude - minMagnitudeForScroll) / (1.0 - minMagnitudeForScroll)
         }
 
-        // --- Acceleration vs damping for auto-read inertia ---
+        // --- Acceleration vs damping for -read inertia ---
 
         // Target downward speed (always positive, lines/sec).
         let targetSpeed = maxLinesPerSecond * effectiveMagnitude
 
-        // Acceleration vs damping for auto-read inertia.
+        // Acceleration vs damping for auto- inertia.
         let accelerating = targetSpeed > autoReadCurrentSpeed
         let tau = accelerating ? tauUp : tauDown
         let alpha = 1.0 - exp(-dt / tau)
@@ -471,7 +471,7 @@ final class MotionEngine: NSObject, CMHeadphoneMotionManagerDelegate {
             neutralPitchDeg = lastP
             neutralYawDeg = lastY
             
-            // Get current mode to check if we're in cursor mode
+            // Get current mode to check if we're in  mode
             // Use async to avoid deadlock if called from main thread
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }

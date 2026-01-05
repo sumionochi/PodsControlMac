@@ -3,7 +3,7 @@
 //  PodsControlMac / HeadFlow
 //
 //  Mux Video Player Component for Tutorial Videos
-//  Supports chapter-based navigation and multi-language captions
+//  Uses hard-coded chapters from TutorialManager.chapters
 //
 
 import SwiftUI
@@ -20,10 +20,15 @@ struct MuxTutorialPlayer: View {
     let showChapterList: Bool
     let onDismiss: () -> Void
     
+    @State private var chapters: [TutorialChapter] = []
+    @State private var currentChapter: TutorialChapter?
     @State private var player: AVPlayer?
     @State private var isPlayerReady = false
     @State private var currentTime: Double = 0
     @State private var showControls = true
+    @State private var statusObservation: NSKeyValueObservation?
+    
+    @State private var selectedChapterID: String
     
     // MARK: - Initialization
     
@@ -35,6 +40,7 @@ struct MuxTutorialPlayer: View {
         self.chapter = chapter
         self.showChapterList = showChapterList
         self.onDismiss = onDismiss
+        _selectedChapterID = State(initialValue: chapter.id)
     }
     
     // MARK: - Body
@@ -45,11 +51,9 @@ struct MuxTutorialPlayer: View {
             tutorialHeader
             
             HStack(spacing: 16) {
-                // Video player
+                // Video player + chapter info
                 VStack(spacing: 12) {
                     videoPlayerView
-                    
-                    // Chapter info
                     chapterInfoCard
                 }
                 .frame(maxWidth: .infinity)
@@ -65,6 +69,9 @@ struct MuxTutorialPlayer: View {
         .frame(minWidth: showChapterList ? 900 : 640, minHeight: 520)
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
+            // Use local hard-coded chapters
+            chapters = TutorialManager.chapters
+            currentChapter = chapter
             setupPlayer()
         }
         .onDisappear {
@@ -160,7 +167,7 @@ struct MuxTutorialPlayer: View {
             
             Spacer()
             
-            // Time indicator
+            // Time indicator (uses computed property below)
             Text(chapter.formattedTime)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.secondary)
@@ -188,7 +195,7 @@ struct MuxTutorialPlayer: View {
             
             ScrollView {
                 VStack(spacing: 8) {
-                    ForEach(TutorialManager.chapters) { chapterItem in
+                    ForEach(chapters) { chapterItem in
                         chapterRowButton(chapterItem)
                     }
                 }
@@ -202,13 +209,15 @@ struct MuxTutorialPlayer: View {
     }
     
     private func chapterRowButton(_ chapterItem: TutorialChapter) -> some View {
-        Button(action: {
+        let isActive = chapterItem.id == selectedChapterID
+        
+        return Button(action: {
             jumpToChapter(chapterItem)
         }) {
             HStack(spacing: 10) {
                 // Status indicator
                 Circle()
-                    .fill(chapterItem.id == chapter.id ? Color.accentColor : Color.clear)
+                    .fill(isActive ? Color.accentColor : Color.clear)
                     .frame(width: 6, height: 6)
                     .overlay(
                         Circle()
@@ -217,8 +226,8 @@ struct MuxTutorialPlayer: View {
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(chapterItem.title)
-                        .font(.system(size: 12, weight: chapterItem.id == chapter.id ? .semibold : .regular))
-                        .foregroundColor(chapterItem.id == chapter.id ? .primary : .secondary)
+                        .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+                        .foregroundColor(isActive ? .primary : .secondary)
                     
                     Text(chapterItem.formattedTime)
                         .font(.system(size: 10))
@@ -227,7 +236,7 @@ struct MuxTutorialPlayer: View {
                 
                 Spacer()
                 
-                if chapterItem.id == chapter.id {
+                if isActive {
                     Image(systemName: "play.fill")
                         .font(.system(size: 10))
                         .foregroundColor(.accentColor)
@@ -237,7 +246,7 @@ struct MuxTutorialPlayer: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(chapterItem.id == chapter.id ? Color.accentColor.opacity(0.1) : Color.clear)
+                    .fill(isActive ? Color.accentColor.opacity(0.1) : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -255,18 +264,18 @@ struct MuxTutorialPlayer: View {
         
         // Create AVPlayer
         let avPlayer = AVPlayer(url: url)
-        
-        // Configure for better playback
         avPlayer.automaticallyWaitsToMinimizeStalling = true
         
-        // Wait for player to be ready, then seek to chapter start time
-        let observation = avPlayer.observe(\.status) { player, _ in
+        // Observe status so we can seek to the chapter start time
+        self.statusObservation = avPlayer.observe(\.status) { player, _ in
             if player.status == .readyToPlay {
                 self.isPlayerReady = true
                 
-                // Seek to chapter start time
-                let startTime = CMTime(seconds: self.chapter.startTime, preferredTimescale: 600)
-                player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+                let startTime = CMTime(seconds: self.chapter.startTime,
+                                       preferredTimescale: 600)
+                player.seek(to: startTime,
+                            toleranceBefore: .zero,
+                            toleranceAfter: .zero) { finished in
                     if finished {
                         print("✅ Seeked to chapter: \(self.chapter.title) at \(self.chapter.startTime)s")
                     }
@@ -274,10 +283,9 @@ struct MuxTutorialPlayer: View {
             }
         }
         
-        // Store player
         self.player = avPlayer
         
-        // Start playback automatically
+        // Auto-play shortly after setup
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             avPlayer.play()
         }
@@ -286,8 +294,14 @@ struct MuxTutorialPlayer: View {
     private func jumpToChapter(_ targetChapter: TutorialChapter) {
         guard let player = player else { return }
         
-        let startTime = CMTime(seconds: targetChapter.startTime, preferredTimescale: 600)
-        player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+        selectedChapterID = targetChapter.id
+        currentChapter = targetChapter
+        
+        let startTime = CMTime(seconds: targetChapter.startTime,
+                               preferredTimescale: 600)
+        player.seek(to: startTime,
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero) { finished in
             if finished {
                 print("✅ Jumped to chapter: \(targetChapter.title)")
                 player.play()
@@ -311,13 +325,12 @@ struct VideoPlayerView: NSViewRepresentable {
     }
     
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
-        // Update if needed
+        // No-op for now
     }
 }
 
-// MARK: - Compact Tutorial Button
+// MARK: - Compact Tutorial Button / Card
 
-/// A compact button to show tutorial for a specific view
 struct TutorialButton: View {
     let chapter: TutorialChapter
     @State private var showTutorial = false
@@ -354,9 +367,6 @@ struct TutorialButton: View {
     }
 }
 
-// MARK: - Tutorial Card (Larger Version)
-
-/// A larger tutorial card with more information
 struct TutorialCard: View {
     let chapter: TutorialChapter
     @State private var showTutorial = false
@@ -371,7 +381,10 @@ struct TutorialCard: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(
                             LinearGradient(
-                                colors: [Color.accentColor.opacity(0.6), Color.accentColor.opacity(0.3)],
+                                colors: [
+                                    Color.accentColor.opacity(0.6),
+                                    Color.accentColor.opacity(0.3)
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -431,15 +444,41 @@ struct TutorialCard: View {
     }
 }
 
+// MARK: - TutorialChapter Helpers
+
+extension TutorialChapter {
+    /// Formats the chapter's *start time* as `m:ss` (e.g. 0:09, 1:05, 3:59).
+    var formattedTime: String {
+        let totalSeconds = Int(startTime.rounded())
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
 // MARK: - Preview
 
 #if DEBUG
 struct MuxTutorialPlayer_Previews: PreviewProvider {
     static var previews: some View {
         MuxTutorialPlayer(
-            chapter: TutorialManager.chapters[0],
+            chapter: TutorialManager.fallbackPreviewChapter,
             showChapterList: true,
             onDismiss: {}
+        )
+    }
+}
+
+private extension TutorialManager {
+    /// Helper just for preview so it compiles
+    static var fallbackPreviewChapter: TutorialChapter {
+        TutorialChapter(
+            id: "preview",
+            title: "Welcome & Getting Started",
+            startTime: 0,
+            duration: 60,
+            summary: "Preview-only chapter for SwiftUI previews.",
+            relatedView: "welcome"
         )
     }
 }
