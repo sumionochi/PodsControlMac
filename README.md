@@ -4,8 +4,6 @@
 
 [Github Repo Link](https://github.com/sumionochi/PodsControlMac)
 
-[1 min Demo Video on Mux](https://player.mux.com/4DQJQ8Z200VqHNem55ljpNwu7aEQUp5wf1poAgd0056hs)
-
 PodsControlMac (codename: **HeadFlow**) is a macOS utility that turns your head movements into system-wide input:
 
 - **Tilt your head** → scroll smoothly in any app  
